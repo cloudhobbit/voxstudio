@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vox Studio</title>
+<style>
+  :root { --bg: #f7f7f5; --surface: #fff; --text: #16161a; --muted: #6b6b76; --line: #e4e4e0; --accent: #4f46e5; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #111114; --surface: #1a1a1f; --text: #ededf2; --muted: #9a9aa6; --line: #2e2e36; --accent: #8b85ff; }
+  }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 -apple-system, system-ui, sans-serif; }
+  main { max-width: 640px; margin: 48px auto; padding: 0 16px; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 20px 24px; }
+  h1 { font-size: 22px; margin: 0 0 4px; } p { color: var(--muted); margin: 0 0 12px; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main><div class="card">
+  <h1>Vox Studio</h1>
+  <p>The server is running. The app arrives with plan 18b.</p>
+  <p id="status">Checking…</p>
+  <p><a href="/api/docs">API docs</a> · <a href="/api/voices">voices</a></p>
+</div></main>
+<script>
+  const status = document.getElementById("status");
+  async function check() {
+    try {
+      const h = await (await fetch("/api/health")).json();
+      status.textContent = `Engine: ${h.engine} (${h.languages.length ? "ready: " + h.languages.join(", ") : "loading…"})` +
+        ` · queue: ${h.queue} · cache: ${h.cache.files} files, ${h.cache.mb} MB`;
+      if (!h.languages.length) setTimeout(check, 1500);
+    } catch { status.textContent = "Can't reach the server. Start it with: voxstudio"; }
+  }
+  check();
+</script>
+</body>
+</html>
