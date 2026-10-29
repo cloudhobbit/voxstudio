@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0 (unreleased)
+## 0.1.0 (29 Oct 2026)
 
 First release: Library, Workbench, Mixer, Signatures, Pronunciations and Projects; Kokoro engine; HTTP API with
 OpenAPI docs; WAV/MP3 export with SRT and WebVTT captions; one-folder YAML workspace.
