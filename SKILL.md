@@ -1,6 +1,6 @@
 ---
 name: voxstudio
-description: Render speech locally with Vox Studio (a free, offline voice studio on localhost). Use when a task needs narration, a voice-over, an audiobook chapter, a character voice, or captions timed to speech, and the user has Vox Studio installed or wants a local alternative to ElevenLabs.
+description: Render speech locally with Vox Studio, a free MIT voice studio on localhost that starts with `uvx voxstudio`. Use when a task needs narration, a voice-over, an audiobook chapter, a character voice, or SRT/VTT captions timed to speech, and the user wants it done offline on their own machine.
 ---
 
 # Vox Studio for agents
@@ -14,7 +14,7 @@ Everything the app does is an API call, so you can drive it directly. Full OpenA
 curl -s localhost:7860/api/health
 ```
 `languages` is empty while the model is still loading (about 10 s after start). If the call fails, start it:
-`voxstudio` (or `uvx voxstudio`). Install: `pipx install voxstudio`.
+`voxstudio` (or `uvx voxstudio`, which installs it too). Install permanently: `pipx install voxstudio`.
 
 ## Speak one line
 

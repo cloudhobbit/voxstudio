@@ -1,74 +1,48 @@
 # Vox Studio
 
-**A local, free voice studio.** Audition 30+ AI voices on your own line, blend them into new ones, tune pitch and
-room sound, fix how names are said, then narrate a whole script and export audio with captions. Everything runs
-on your machine. Nothing you type or render leaves it.
+**A voice studio you start with one command.** Audition 30+ AI voices on your own line, blend them into new ones,
+tune pitch and room sound, fix how names are said, then narrate a whole script and export MP3 with captions.
+MIT, offline, no Electron, runs on a laptop CPU. Every button is also an HTTP call, so your coding agent can use it.
 
-Think of it as the narration half of ElevenLabs Studio, running offline on a laptop, with plain YAML files
-instead of an account.
-
-<p align="center">
-  <img src="docs/library.png" alt="The Library: every voice on the same line, with filters, ratings and a compare tray" width="820">
-</p>
-
-## Install
+[![PyPI](https://img.shields.io/pypi/v/voxstudio?label=pypi)](https://pypi.org/project/voxstudio/)
+[![CI](https://github.com/cloudhobbit/voxstudio/actions/workflows/ci.yml/badge.svg)](https://github.com/cloudhobbit/voxstudio/actions/workflows/ci.yml)
+[![MIT](https://img.shields.io/badge/licence-MIT-blue)](LICENSE)
+![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)
 
 ```bash
 uvx voxstudio
 ```
 
-or, if you prefer pipx:
+That is the whole install. It opens `http://127.0.0.1:7860` and loads the Kokoro voice model in the background
+(first run downloads about 330 MB). Prefer a permanent install? `pipx install voxstudio && voxstudio`.
+No model yet? `uvx voxstudio --engine fake` shows the app with tones instead of speech.
 
-```bash
-pipx install voxstudio && voxstudio
-```
+<p align="center">
+  <img src="docs/library.png" alt="The Library: every voice on the same line, with filters, ratings and a compare tray" width="820">
+</p>
 
-That starts the server on `http://127.0.0.1:7860` and loads the Kokoro voice model in the background (first run
-downloads about 330 MB). Python 3.10 or newer is required. `ffmpeg` is needed for pitch, effects, spaces and MP3
-export (`brew install ffmpeg` or `apt install ffmpeg`); `espeak-ng` is optional and gives phoneme suggestions.
+Hear an export made with it: [chapter-one.mp3](docs/demo/chapter-one.mp3) and [its captions](docs/demo/chapter-one.srt).
 
-Want to see the app without downloading a model? `voxstudio --engine fake` uses tones instead of speech.
+## 20-second tour
 
-## What you can do
+1. **Library**: every voice says your line. Filter by gender, accent and grade, favourite, rate, compare four back to back.
+2. **Workbench**: pick a voice, set speed, pitch, a character effect (robot, ghost, radio…) and a space (room, hall, phone…). Hear it in about a second. Save it as a preset.
+3. **Mixer**: blend two to four voices with linked sliders; save the blend as a signature voice, `@narrator`.
+4. **Pronunciations**: `Chandrayaan: Chun-druh-yaan`, or exact phonemes. A scanner finds the names in your script.
+5. **Projects**: paste a script, one block per paragraph, give each block a voice, render (only changed blocks re-render), export WAV or MP3 plus SRT and WebVTT captions timed from the engine's word timestamps.
 
-| Page | What it does |
-|---|---|
-| **Library** | Hear every voice on the same line. Filter by gender, accent and grade, search tags, favourite, rate 1–5, add tags, compare up to four voices back to back with `Space`. |
-| **Workbench** | One line, any voice: speed, pitch in semitones, a character effect (robot, deep, ghost, radio…) and a space (room, hall, cave, phone…). Heard in about a second. Save presets. Download the WAV. |
-| **Mixer** | Blend two to four voices with linked sliders and hear each change. Save the result as a signature voice and use it anywhere as `@name`. |
-| **Signatures** | Your saved mixes: where they are used, rename (projects follow), duplicate, delete safely. |
-| **Pronunciations** | Respellings (`Chun-druh-yaan`) or exact phonemes (`/pɹˈʌɡjɑn/`), shared or per project, with before/after playback and a scanner that finds names in your script. |
-| **Projects** | A script in blocks, each with its own voice and settings. Render all (only changed blocks re-render), export WAV or MP3 plus SRT and WebVTT captions timed from the engine's word timestamps. |
-
-Keyboard: `Space` play/pause, `J`/`K` move through voices, `F` favourite, `C` compare, `1`–`5` rate, `/` search,
-`?` for the full list. Light and dark themes, works at phone width.
+Keyboard everywhere (`Space` play, `J`/`K` next voice, `F` favourite, `C` compare, `1`–`5` rate, `?` for the list).
+Light and dark themes. Works at phone width.
 
 <p align="center">
   <img src="docs/project.png" alt="A project: three blocks with two voices, rendered and exported with captions" width="820">
 </p>
 
-Hear an export made with it: [docs/demo/chapter-one.mp3](docs/demo/chapter-one.mp3) with
-[its captions](docs/demo/chapter-one.srt).
+## For coding agents
 
-## How it compares
-
-| | Vox Studio | ElevenLabs Studio |
-|---|---|---|
-| Runs | on your machine, offline | in the cloud |
-| Price | free, MIT | subscription, per-character credits |
-| Voices | Kokoro's 30+ voices and any blend of them | thousands, plus cloning |
-| Quality | good for narration; not studio-grade acting | state of the art |
-| Voice cloning | no | yes |
-| Captions | SRT and WebVTT from word timings | yes |
-| Your data | plain YAML files in a folder | their servers |
-| API | local HTTP with OpenAPI docs | yes |
-
-If you need cloning or the very best expressiveness, use a cloud service. If you want a narration tool you own,
-that works on a plane and never sends your script anywhere, this is it.
-
-## The API
-
-Everything the app does is an HTTP call on localhost, documented at `/api/docs`.
+Everything the app does is a localhost HTTP call, documented at `/api/docs`. [SKILL.md](SKILL.md) teaches Claude
+Code, Codex and friends to narrate for you: start the server, speak a line, build a project, export with captions,
+fix a pronunciation. Drop it in your skills folder or point the agent at this repo.
 
 ```bash
 curl -s localhost:7860/api/speak -H 'content-type: application/json' \
@@ -82,16 +56,42 @@ r = requests.post("http://127.0.0.1:7860/api/speak", json={"text": "Rendered fro
 open("line.wav", "wb").write(requests.get("http://127.0.0.1:7860" + r["url"]).content)
 ```
 
-Projects, signatures, presets and pronunciations have CRUD routes too (`/api/projects`, `/api/signatures`, …).
-Writes carry an `etag`; if the file changed on disk, the server answers 409 instead of overwriting.
-A [SKILL.md](SKILL.md) in this repository teaches coding agents to use it.
+Projects, signatures, presets and pronunciations have CRUD routes (`/api/projects`, `/api/signatures`, …).
+Writes carry an `etag`; if the file changed on disk the server answers 409 instead of overwriting.
 
-There is also a small CLI for scripts:
+A small CLI covers scripts and cron jobs:
 
 ```bash
 voxstudio speak "One line to a file." --voice bm_george --pitch -2 --space hall --out line.wav
 voxstudio voices
 ```
+
+## Which voice tool do you want?
+
+| | **Vox Studio** | [VoiceStudio](https://github.com/debpalash/VoiceStudio) | ElevenLabs Studio |
+|---|---|---|---|
+| Install | `uvx voxstudio` | `curl \| sh`, Electron app | web account |
+| Licence | MIT | AGPL-3.0 + commercial | proprietary |
+| Runs | offline, laptop CPU | offline, GPU helps a lot | cloud |
+| Voices | Kokoro's 30+ and any blend | dozens of engines, 646 languages | thousands |
+| Cloning, dubbing | no | yes | yes |
+| Pronunciation fixes with before/after | yes | partial | yes |
+| Captions from word timings | SRT, WebVTT | yes | yes |
+| Per-block voice and settings in a script | yes | yes | yes |
+| Everything as an HTTP call + agent skill | yes | API | API |
+| Your data | one folder of YAML | app data | their servers |
+
+Pick VoiceStudio if you need cloning, dubbing or many languages and do not mind a desktop app. Pick ElevenLabs if
+you need the best acting money can buy. Pick Vox Studio when you want a narration tool you `pip install`, keep in
+git, and drive from scripts and agents.
+
+## Honest limits
+
+- Kokoro is good for narration and characters, not studio-grade acting. English (US and UK) is best; Hindi,
+  Spanish, French, Italian, Japanese, Portuguese and Chinese work with fewer voices.
+- No cloning. That is a feature for some users and a deal-breaker for others.
+- `ffmpeg` is needed for pitch, effects, spaces and MP3 (`brew install ffmpeg` or `apt install ffmpeg`).
+  Without it you still get plain speech and WAV. `espeak-ng` is optional and adds phoneme suggestions.
 
 ## The workspace
 
@@ -111,8 +111,8 @@ Plain YAML, so you can edit it by hand or keep it in git. The app never overwrit
 
 ## Engines
 
-Kokoro-82M (Apache-2.0) is the first engine: 82 million parameters, runs on a CPU, English (US and UK), Hindi,
-and several other languages. An engine is a small class with `voices()`, `speak()` and `speak_timed()`; see
+Kokoro-82M (Apache-2.0) is the first engine: 82 million parameters, runs on a CPU, word timestamps for captions.
+An engine is a small class with `voices()`, `speak()` and `speak_timed()`; see
 [`src/voxstudio/engines/base.py`](src/voxstudio/engines/base.py). Pull requests for other engines are welcome.
 
 ## Security
@@ -124,20 +124,21 @@ cannot talk to it), keeps every file path inside the workspace, and never builds
 
 ```bash
 git clone https://github.com/cloudhobbit/voxstudio && cd voxstudio
-uv venv && uv pip install -e ".[dev,kokoro]"
-.venv/bin/pytest             # fast: a fake engine stands in for the model
+uv venv && uv pip install -e ".[dev]"
+.venv/bin/pytest             # seconds: a fake engine stands in for the model
 .venv/bin/pytest --slow      # also one real Kokoro test
 .venv/bin/voxstudio serve --engine fake --workspace /tmp/vox
 ```
 
 The front end is plain ES modules and CSS under `src/voxstudio/app`: no build step, no dependencies.
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Roadmap
 
 - More engines (Piper, Chatterbox) behind the same interface
-- Per-block emphasis and pauses inside a block
-- A render queue for long scripts, and chapter markers in exports
-- Audiobook packaging (M4B with chapters)
+- Emphasis and pauses inside a block
+- A render queue for long scripts, chapter markers, M4B audiobooks
+- An MCP server next to the HTTP API
 
 ## Licence
 

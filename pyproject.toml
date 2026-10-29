@@ -9,8 +9,8 @@ description = "A local, free voice studio: audition, blend and tune AI voices, t
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
-authors = [{ name = "Vox Studio contributors" }]
-keywords = ["tts", "text-to-speech", "kokoro", "voice", "narration", "audiobook", "elevenlabs", "local", "offline"]
+authors = [{ name = "cloudhobbit" }]
+keywords = ["tts", "text-to-speech", "kokoro", "voice", "narration", "audiobook", "local", "offline", "agent-skills", "claude-code", "captions"]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Environment :: Web Environment",
@@ -26,10 +26,11 @@ dependencies = [
   "pyyaml>=6",
   "numpy>=1.24",
   "soundfile>=0.12",
+  "kokoro>=0.9.4",
 ]
 
 [project.optional-dependencies]
-kokoro = ["kokoro>=0.9.4"]
+kokoro = []  # kept for older install instructions; Kokoro is now a core dependency
 dev = ["pytest>=8", "httpx>=0.27", "ruff>=0.4"]
 
 [project.scripts]
@@ -38,6 +39,9 @@ voxstudio = "voxstudio.cli:main"
 [project.urls]
 Homepage = "https://github.com/cloudhobbit/voxstudio"
 Issues = "https://github.com/cloudhobbit/voxstudio/issues"
+
+[tool.hatch.build.targets.sdist]
+exclude = ["docs/", ".github/", "dist/"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/voxstudio"]

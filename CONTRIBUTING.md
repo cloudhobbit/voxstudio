@@ -11,7 +11,7 @@ Thanks for looking. Vox Studio is small on purpose; here is how it fits together
 ## Working on it
 
 ```bash
-uv venv && uv pip install -e ".[dev,kokoro]"
+uv venv && uv pip install -e ".[dev]"
 .venv/bin/pytest                 # seconds, fake engine
 .venv/bin/pytest --slow          # also loads Kokoro once
 .venv/bin/ruff check src tests
