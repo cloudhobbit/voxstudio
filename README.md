@@ -7,13 +7,13 @@ MIT, offline, no Electron, runs on a laptop CPU. Every button is also an HTTP ca
 [![PyPI](https://img.shields.io/pypi/v/voxstudio?label=pypi)](https://pypi.org/project/voxstudio/)
 [![CI](https://github.com/cloudhobbit/voxstudio/actions/workflows/ci.yml/badge.svg)](https://github.com/cloudhobbit/voxstudio/actions/workflows/ci.yml)
 [![MIT](https://img.shields.io/badge/licence-MIT-blue)](LICENSE)
-![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)
+![Python 3.10–3.12](https://img.shields.io/badge/python-3.10%E2%80%933.12-blue)
 
 ```bash
 uvx voxstudio
 ```
 
-That is the whole install. It opens `http://127.0.0.1:7860` and loads the Kokoro voice model in the background
+That is the whole install (`uv` fetches a Python 3.12 if your system one is newer; Kokoro has no 3.13 build yet). It opens `http://127.0.0.1:7860` and loads the Kokoro voice model in the background
 (first run downloads about 330 MB). Prefer a permanent install? `pipx install voxstudio && voxstudio`.
 No model yet? `uvx voxstudio --engine fake` shows the app with tones instead of speech.
 

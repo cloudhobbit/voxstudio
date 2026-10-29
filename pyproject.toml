@@ -4,11 +4,11 @@ build-backend = "hatchling.build"
 
 [project]
 name = "voxstudio"
-version = "0.1.0"
+version = "0.1.1"
 description = "A local, free voice studio: audition, blend and tune AI voices, then narrate scripts with captions. Runs offline."
 readme = "README.md"
 license = "MIT"
-requires-python = ">=3.10"
+requires-python = ">=3.10,<3.13"  # kokoro 0.9.x has no 3.13 wheels; uvx picks 3.12 automatically
 authors = [{ name = "cloudhobbit" }]
 keywords = ["tts", "text-to-speech", "kokoro", "voice", "narration", "audiobook", "local", "offline", "agent-skills", "claude-code", "captions"]
 classifiers = [
