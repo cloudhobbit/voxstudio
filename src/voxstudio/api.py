@@ -1,5 +1,6 @@
 """The HTTP API. Local only: binds 127.0.0.1 and refuses other hosts and origins on writes."""
 import logging
+import re
 import tempfile
 import time
 from pathlib import Path
@@ -12,7 +13,8 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import NAME, __version__, pronounce
+from . import NAME, __version__, pronounce, scan
+from . import render as rendering
 from .cache import AudioCache, make_key
 from .catalogue import BLENDS, SAMPLE_LINES, VOICES, grade_note
 from .engines import load_engine
@@ -86,6 +88,19 @@ class ProjectCreate(BaseModel):
     voice: str = "af_heart"
 
 
+class ExportIn(BaseModel):
+    format: str = "wav"
+    captions: list[str] = ["srt", "vtt"]
+
+
+class ScanIn(BaseModel):
+    project: str
+
+
+class SuggestIn(BaseModel):
+    word: str = Field(min_length=1, max_length=80)
+
+
 class ProjectIn(BaseModel):
     title: str | None = None
     blocks: list[dict] | None = None
@@ -157,15 +172,21 @@ def create_app(workspace: Workspace, engine_name: str = "kokoro", worker: TTSWor
             apply_chain(raw, cache.wav(key), pitch, effect, space, caps)
         return cache.put_file(key, inputs, extra)
 
-    def render(text: str, voice: str, speed: float, pitch: float, effect: str, space: str,
-               project: str | None, pronounce_: bool) -> dict:
+    def plan(text: str, voice: str, speed: float, pitch: float, effect: str, space: str, project: str | None,
+             pronounce_: bool = True, table: dict | None = None) -> tuple[str, dict]:
+        """The cache key (and inputs) of a line without rendering it."""
         parts = parse_voice(voice, sigs())
         check_sound(effect, space)
-        spoken = pronounce.apply(text, ws.pronunciation_table(project)) if pronounce_ else text
+        spoken = pronounce.apply(text, table if table is not None else ws.pronunciation_table(project)) if pronounce_ else text
         speed, pitch = float(speed), float(pitch)   # 0 and 0.0 must give the same key
         inputs = {"kind": "speech", "engine": worker.engine.name, "spoken": spoken, "voice": parts, "speed": speed,
                   "pitch": pitch, "effect": effect, "space": space, "fx": "rb" if caps.rubberband else "ar"}
-        key = make_key(**inputs)
+        return make_key(**inputs), inputs
+
+    def render(text: str, voice: str, speed: float, pitch: float, effect: str, space: str,
+               project: str | None, pronounce_: bool, table: dict | None = None) -> dict:
+        key, inputs = plan(text, voice, speed, pitch, effect, space, project, pronounce_, table)
+        parts, spoken, speed, pitch = inputs["voice"], inputs["spoken"], inputs["speed"], inputs["pitch"]
         meta = cache.meta(key)
         if meta:
             return {"key": key, "url": f"/audio/{key}.wav", "duration": meta["duration"], "cached": True,
@@ -387,9 +408,48 @@ def create_app(workspace: Workspace, engine_name: str = "kokoro", worker: TTSWor
 
     # ---- projects ---------------------------------------------------------------------------------
 
+    def block_status(slug: str, data: dict) -> list[dict]:
+        table = ws.pronunciation_table(slug)
+        out = []
+        for b in data["blocks"]:
+            try:
+                key, _ = plan(b["text"], b["voice"], b["speed"], b["pitch"], b["effect"], b["space"], slug, True, table)
+                meta = cache.meta(key)
+                out.append({"id": b["id"], "key": key, "cached": bool(meta), "duration": meta["duration"] if meta else None,
+                            "url": f"/audio/{key}.wav" if meta else None})
+            except ValueError as e:
+                out.append({"id": b["id"], "key": None, "cached": False, "duration": None, "url": None, "error": str(e)})
+        return out
+
     def project_out(slug: str) -> dict:
         data, tag = ws.projects.load(slug)
-        return {"slug": slug, **data, "etag": tag}
+        status = block_status(slug, data)
+        rendered = [st["duration"] for st in status]
+        total = round(sum(d + b["pause"] for d, b in zip(rendered, data["blocks"], strict=True) if d is not None), 3) if all(rendered) and rendered else None
+        return {"slug": slug, **data, "etag": tag, "status": status, "duration": total, "exports": exports_of(slug)}
+
+    def exports_of(slug: str) -> list[dict]:
+        folder = ws.exports / slug
+        if not folder.exists():
+            return []
+        return [{"name": f.name, "url": f"/exports/{slug}/{f.name}", "bytes": f.stat().st_size, "modified": f.stat().st_mtime}
+                for f in sorted(folder.iterdir()) if f.is_file() and not f.name.startswith(".")]
+
+    def render_blocks(slug: str, job) -> list[dict]:
+        """Render every block of a project (cached ones are instant); returns the assembled block list."""
+        data, _ = ws.projects.load(slug)
+        table = ws.pronunciation_table(slug)
+        out = []
+        for b in data["blocks"]:
+            try:
+                r = render(b["text"], b["voice"], b["speed"], b["pitch"], b["effect"], b["space"], slug, True, table)
+                out.append({**b, "key": r["key"], "duration": r["duration"], "words": r["words"], "url": r["url"], "cached": r["cached"]})
+                job.urls.append(r["url"])
+            except Exception as e:
+                job.failed.append({"id": b["id"], "error": str(e)})
+                job.urls.append(None)
+            job.done += 1
+        return out
 
     @app.get("/api/projects")
     def list_projects():
@@ -424,7 +484,75 @@ def create_app(workspace: Workspace, engine_name: str = "kokoro", worker: TTSWor
     @app.delete("/api/projects/{slug}")
     def delete_project(slug: str):
         ws.projects.delete(slug)
+        rendering.clear_exports(ws.exports / slug)
         return {"deleted": slug}
+
+    @app.post("/api/projects/{slug}/render")
+    def render_project(slug: str):
+        data, _ = ws.projects.load(slug)
+        if not data["blocks"]:
+            raise ValueError("The project has no blocks yet")
+
+        def run(job):
+            blocks = render_blocks(slug, job)
+            ok = [b for b in blocks if b.get("key")]
+            assembled = rendering.assemble(ok, cache.root) if ok and not job.failed else None
+            job.result = {"blocks": [{"id": b["id"], "key": b.get("key"), "url": b.get("url"), "duration": b.get("duration"), "cached": b.get("cached")} for b in blocks],
+                          "duration": assembled["duration"] if assembled else None, "spans": assembled["spans"] if assembled else []}
+
+        return {"job_id": jobs.start("render", len(data["blocks"]), run).id}
+
+    @app.post("/api/projects/{slug}/export")
+    def export_project(slug: str, body: ExportIn):
+        data, _ = ws.projects.load(slug)
+        if not data["blocks"]:
+            raise ValueError("The project has no blocks yet")
+        if body.format not in ("wav", "mp3"):
+            raise ValueError("format must be wav or mp3")
+        if body.format == "mp3" and not caps.mp3:
+            raise ValueError("This ffmpeg has no MP3 encoder (libmp3lame); export WAV instead")
+        captions = [c for c in body.captions if c in ("srt", "vtt")]
+
+        def run(job):
+            blocks = render_blocks(slug, job)
+            if job.failed:
+                raise ValueError(f"{len(job.failed)} block(s) failed: " + "; ".join(f["error"] for f in job.failed[:3]))
+            assembled = rendering.assemble(blocks, cache.root)
+            files = rendering.export(assembled, ws.exports / slug, slug, body.format, captions, caps, blocks)
+            job.done = job.total
+            job.result = {"duration": assembled["duration"], "files": [{"name": f.name, "url": f"/exports/{slug}/{f.name}", "bytes": f.stat().st_size} for f in files],
+                          "cues": len(assembled["cues"])}
+
+        return {"job_id": jobs.start("export", len(data["blocks"]), run).id}
+
+    @app.get("/api/projects/{slug}/exports")
+    def list_exports(slug: str):
+        ws.projects.folder(slug)
+        return {"files": exports_of(slug)}
+
+    @app.get("/exports/{slug}/{name}")
+    def export_file(slug: str, name: str):
+        ws.projects.folder(slug)
+        if not re.match(r"^[A-Za-z0-9._-]+$", name) or name.startswith("."):
+            raise NotFound(name)
+        path = (ws.exports / slug / name).resolve()
+        if not path.is_relative_to(ws.exports.resolve()) or not path.is_file():
+            raise NotFound(name)
+        media = {"wav": "audio/wav", "mp3": "audio/mpeg", "srt": "text/plain; charset=utf-8", "vtt": "text/vtt; charset=utf-8", "json": "application/json"}
+        return FileResponse(path, media_type=media.get(path.suffix[1:], "application/octet-stream"), filename=name)
+
+    @app.post("/api/pronunciations/scan")
+    def scan_project(body: ScanIn):
+        data, _ = ws.projects.load(body.project)
+        known = set(ws.pronunciation_table(body.project))
+        return {"words": scan.candidates([b["text"] for b in data["blocks"]], known)}
+
+    @app.post("/api/pronunciations/suggest")
+    def suggest_ipa(body: SuggestIn):
+        ipa = scan.espeak_ipa(body.word)
+        if ipa is None:
+            return JSONResponse({"detail": "espeak-ng is not installed (brew install espeak-ng / apt install espeak-ng)"}, status_code=501)
+        return {"word": body.word, "ipa": f"/{ipa}/"}
 
     # ---- cache ----------------------------------------------------------------------------------
 

@@ -16,7 +16,7 @@ function shareBar(mix) {
 }
 
 async function rename(sig, etag) {
-  const input = h("input.input", { value: sig.name, "aria-label": "New name", pattern: "[a-z0-9][-a-z0-9_]*" });
+  const input = h("input.input", { value: sig.name, "aria-label": "New name", pattern: "[a-z0-9][a-z0-9_\\-]*" });
   const used = sig.used_in.length ? ` The ${sig.used_in.length} project${sig.used_in.length > 1 ? "s" : ""} using it (${sig.used_in.join(", ")}) will be updated too.` : "";
   if (!(await dialog({ title: `Rename @${sig.name}`, body: `Lowercase letters, digits, - and _.${used}`, form: input, ok: "Rename" }))) return;
   const name = input.value.trim().toLowerCase();
@@ -37,7 +37,7 @@ async function remove(sig, etag) {
 }
 
 async function duplicate(sig) {
-  const input = h("input.input", { value: `${sig.name}-2`, "aria-label": "Name", pattern: "[a-z0-9][-a-z0-9_]*" });
+  const input = h("input.input", { value: `${sig.name}-2`, "aria-label": "Name", pattern: "[a-z0-9][a-z0-9_\\-]*" });
   if (!(await dialog({ title: `Duplicate @${sig.name}`, form: input, ok: "Duplicate" }))) return;
   try { await api.put(`/api/signatures/${encodeURIComponent(input.value.trim().toLowerCase())}`, { mix: sig.mix, speed: sig.speed, pitch: sig.pitch, note: sig.note }); toast("Duplicated", { kind: "ok" }); }
   catch { return; }

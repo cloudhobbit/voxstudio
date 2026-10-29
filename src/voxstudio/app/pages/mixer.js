@@ -87,7 +87,7 @@ async function addVoice() {
 }
 
 async function save() {
-  const name = h("input.input", { placeholder: "narrator", "aria-label": "Signature name", pattern: "[a-z0-9][-a-z0-9_]*" });
+  const name = h("input.input", { placeholder: "narrator", "aria-label": "Signature name", pattern: "[a-z0-9][a-z0-9_\\-]*" });
   const note = h("input.input", { placeholder: "warm, slightly British polish", "aria-label": "Note" });
   const ok = await dialog({ title: "Save as signature voice",
     body: h("p.muted", {}, describe(), h("br"), `Default speed ${s.speed}×, pitch ${s.pitch} st. Use it anywhere as `, h("code", {}, "@name"), "."),
