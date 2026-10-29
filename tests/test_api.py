@@ -101,6 +101,14 @@ def test_voices_catalogue_with_library_notes(client):
     assert {x["id"] for x in e["effects"]} == set(fx.EFFECTS) and {x["id"] for x in e["spaces"]} == set(fx.SPACES)
 
 
+def test_voices_carry_cached_samples_for_a_line(client):
+    assert all(v.get("sample") is None for v in client.get("/api/voices?text=Hello+world").json()["voices"])
+    client.post("/api/speak", json={"text": "Hello world", "voice": "af_heart"})
+    by_id = {v["id"]: v for v in client.get("/api/voices?text=Hello+world").json()["voices"]}
+    assert by_id["af_heart"]["sample"]["url"].startswith("/audio/") and by_id["bf_emma"]["sample"] is None
+    assert client.get("/api/voices?text=Other+line").json()["voices"][0]["sample"] is None
+
+
 def test_signatures_crud_rename_and_guarded_delete(client):
     tag = client.get("/api/signatures").json()["etag"]
     r = client.put("/api/signatures/narrator", json={"mix": "af_heart:0.7,am_michael:0.3", "pitch": -1, "note": "calm", "etag": tag})

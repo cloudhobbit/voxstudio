@@ -296,17 +296,26 @@ class ProjectStore:
     def delete(self, slug: str) -> None:
         shutil.rmtree(self.folder(slug))
 
-    def uses_voice(self, needle: str) -> list[str]:
-        """Projects whose blocks use this voice spec or signature (for example '@narrator')."""
-        found = []
+    def voice_usage(self) -> dict[str, list[str]]:
+        """voice spec (and every base voice id inside it) -> projects whose blocks use it, in one pass."""
+        usage: dict[str, list[str]] = {}
         for slug in self.names():
             try:
                 blocks = self.load(slug)[0]["blocks"]
-            except Exception:
+            except Exception:  # a half-edited file must not break the catalogue
                 continue
-            if any(needle == str(b.get("voice", "")) or needle in str(b.get("voice", "")).split(",") for b in blocks):
-                found.append(slug)
-        return found
+            seen = set()
+            for b in blocks:
+                spec = str(b.get("voice", ""))
+                for key in {spec, *[part.partition(":")[0].strip() for part in spec.split(",")]}:
+                    if key and key not in seen:
+                        seen.add(key)
+                        usage.setdefault(key, []).append(slug)
+        return usage
+
+    def uses_voice(self, needle: str) -> list[str]:
+        """Projects whose blocks use this voice spec or signature (for example '@narrator')."""
+        return self.voice_usage().get(needle, [])
 
 
 class Workspace:

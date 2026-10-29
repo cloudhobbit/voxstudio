@@ -162,6 +162,7 @@ def create_app(workspace: Workspace, engine_name: str = "kokoro", worker: TTSWor
         parts = parse_voice(voice, sigs())
         check_sound(effect, space)
         spoken = pronounce.apply(text, ws.pronunciation_table(project)) if pronounce_ else text
+        speed, pitch = float(speed), float(pitch)   # 0 and 0.0 must give the same key
         inputs = {"kind": "speech", "engine": worker.engine.name, "spoken": spoken, "voice": parts, "speed": speed,
                   "pitch": pitch, "effect": effect, "space": space, "fx": "rb" if caps.rubberband else "ar"}
         key = make_key(**inputs)
@@ -177,9 +178,22 @@ def create_app(workspace: Workspace, engine_name: str = "kokoro", worker: TTSWor
 
     app.state.render = render
 
-    def voice_entries() -> list[dict]:
+    def sample_for(voice: str, text: str, speed: float = 1.0, pitch: float = 0.0) -> dict | None:
+        """The cached sample of `text` in this voice, if it was rendered before (no rendering here)."""
+        try:
+            parts = parse_voice(voice, sigs())
+        except SpecError:
+            return None
+        spoken = pronounce.apply(text, ws.pronunciation_table(None))
+        key = make_key(kind="speech", engine=worker.engine.name, spoken=spoken, voice=parts, speed=float(speed),
+                       pitch=float(pitch), effect="none", space="dry", fx="rb" if caps.rubberband else "ar")
+        meta = cache.meta(key)
+        return {"url": f"/audio/{key}.wav", "duration": meta["duration"]} if meta else None
+
+    def voice_entries(text: str | None = None) -> list[dict]:
         notes, _ = ws.library.load()
         signatures = sigs()
+        usage = ws.projects.voice_usage()
         out = []
         for vid, v in VOICES.items():
             out.append({"id": vid, "kind": "stock", "name": v["name"], "accent": v["accent"], "language": v["language"],
@@ -201,7 +215,9 @@ def create_app(workspace: Workspace, engine_name: str = "kokoro", worker: TTSWor
             v.setdefault("favourite", False)
             v.setdefault("rating", 0)
             v.setdefault("tags", [])
-            v["used_in"] = ws.projects.uses_voice(v["id"])
+            v["used_in"] = usage.get(v["id"], [])
+            if text:
+                v["sample"] = sample_for(v["id"], text, v.get("speed", 1.0), v.get("pitch", 0.0))
         return out
 
     # ---- routes: health, catalogue, speech ----------------------------------------------------
@@ -215,8 +231,9 @@ def create_app(workspace: Workspace, engine_name: str = "kokoro", worker: TTSWor
                                  "mp3": caps.mp3}}
 
     @app.get("/api/voices")
-    def voices():
-        return {"voices": voice_entries(), "etag": etag(ws.library.path)}
+    def voices(text: str | None = Query(None, max_length=2000)):
+        """The catalogue. With ?text=, each voice carries `sample` (url, duration) when that line is already cached."""
+        return {"voices": voice_entries(text), "etag": etag(ws.library.path)}
 
     @app.patch("/api/voices/{voice_id:path}")
     def patch_voice(voice_id: str, body: PatchVoice):
