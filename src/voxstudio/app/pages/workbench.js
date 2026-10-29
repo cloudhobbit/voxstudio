@@ -74,7 +74,7 @@ async function loadPresets() {
   els.presets.append(h("option", { value: "" }, presets.length ? "Apply a preset…" : "No presets yet"), ...presets.map((p) => h("option", { value: p.name }, p.name)));
 }
 async function savePreset() {
-  const name = h("input.input", { placeholder: "villain-in-cave", "aria-label": "Preset name", pattern: "[a-z0-9][a-z0-9_-]*" });
+  const name = h("input.input", { placeholder: "villain-in-cave", "aria-label": "Preset name", pattern: "[a-z0-9][-a-z0-9_]*" });
   const ok = await dialog({ title: "Save as preset", body: `Saves ${describe(settings())} to presets.yaml.`, form: h("div.field", {}, h("label", {}, "Name (lowercase, digits, - and _)"), name), ok: "Save" });
   if (!ok || !name.value.trim()) return;
   try { await api.put(`/api/presets/${encodeURIComponent(name.value.trim().toLowerCase())}`, settings()); toast(`Preset "${name.value.trim()}" saved`, { kind: "ok" }); loadPresets(); } catch { /* toasted */ }

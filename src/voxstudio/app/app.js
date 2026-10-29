@@ -80,6 +80,11 @@ document.addEventListener("vox:busy", (e) => { busy = Math.max(0, busy + e.detai
 const banner = document.getElementById("banner");
 document.addEventListener("vox:offline", () => { banner.textContent = "Can't reach the server. Start it with:  voxstudio"; banner.classList.add("on"); });
 document.addEventListener("vox:online", () => banner.classList.remove("on"));
+document.addEventListener("vox:mix-tray", (e) => {
+  const ids = e.detail.map((it) => it.id).filter((id) => store.get("voices").some((v) => v.id === id && v.kind === "stock"));
+  if (!ids.length) return toast("Add stock voices to Compare first; a signature or a Workbench line can't be mixed again");
+  go(`mixer?with=${encodeURIComponent(ids.join(","))}`);
+});
 
 export function setTitle(text, actions = []) {
   document.getElementById("title").textContent = text;
