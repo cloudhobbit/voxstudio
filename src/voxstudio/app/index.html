@@ -4,36 +4,38 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Vox Studio</title>
-<style>
-  :root { --bg: #f7f7f5; --surface: #fff; --text: #16161a; --muted: #6b6b76; --line: #e4e4e0; --accent: #4f46e5; }
-  @media (prefers-color-scheme: dark) {
-    :root { --bg: #111114; --surface: #1a1a1f; --text: #ededf2; --muted: #9a9aa6; --line: #2e2e36; --accent: #8b85ff; }
-  }
-  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 -apple-system, system-ui, sans-serif; }
-  main { max-width: 640px; margin: 48px auto; padding: 0 16px; }
-  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 20px 24px; }
-  h1 { font-size: 22px; margin: 0 0 4px; } p { color: var(--muted); margin: 0 0 12px; }
-  a { color: var(--accent); }
-</style>
+<meta name="description" content="A local, free voice studio: audition, blend and tune AI voices, then narrate scripts with captions.">
+<link rel="stylesheet" href="/app.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%234F46E5'/%3E%3Cpath d='M7 8l5 9 5-9' stroke='white' stroke-width='2.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<script>try { const t = localStorage.getItem("vox.theme"); if (t) document.documentElement.dataset.theme = JSON.parse(t); } catch {}</script>
 </head>
 <body>
-<main><div class="card">
-  <h1>Vox Studio</h1>
-  <p>The server is running. The app arrives with plan 18b.</p>
-  <p id="status">Checking…</p>
-  <p><a href="/api/docs">API docs</a> · <a href="/api/voices">voices</a></p>
-</div></main>
-<script>
-  const status = document.getElementById("status");
-  async function check() {
-    try {
-      const h = await (await fetch("/api/health")).json();
-      status.textContent = `Engine: ${h.engine} (${h.languages.length ? "ready: " + h.languages.join(", ") : "loading…"})` +
-        ` · queue: ${h.queue} · cache: ${h.cache.files} files, ${h.cache.mb} MB`;
-      if (!h.languages.length) setTimeout(check, 1500);
-    } catch { status.textContent = "Can't reach the server. Start it with: voxstudio"; }
-  }
-  check();
-</script>
+<div class="shell">
+  <nav class="sidebar" aria-label="Sections">
+    <a class="brand" href="#/library"><span class="mark" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 8l5 9 5-9"/></svg></span><span>Vox Studio</span></a>
+    <div class="nav" id="nav"></div>
+    <div class="spacer"></div>
+    <div class="nav" id="nav-bottom"></div>
+  </nav>
+  <div class="content">
+    <header class="topbar">
+      <h1 id="title">Library</h1>
+      <div id="topbar-actions" class="row"></div>
+      <select class="select" id="project-select" aria-label="Current project" style="width:auto;min-height:32px"></select>
+      <button class="icon-btn" id="theme-btn" aria-label="Toggle dark mode" title="Toggle dark mode"></button>
+      <button class="icon-btn" id="help-btn" aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)"></button>
+    </header>
+    <div class="progress-line" id="progress" aria-hidden="true"></div>
+    <div class="banner" id="banner" role="alert"></div>
+    <main class="page" id="main" tabindex="-1"></main>
+  </div>
+  <footer class="player" id="player" aria-label="Player"></footer>
+  <nav class="tabbar" id="tabbar" aria-label="Sections"></nav>
+</div>
+<div class="toasts" aria-live="polite"></div>
+<div id="live" class="sr-only" aria-live="polite"></div>
+<dialog id="dialog"></dialog>
+<aside class="drawer" id="drawer" aria-label="Details"></aside>
+<script type="module" src="/app.js"></script>
 </body>
 </html>
