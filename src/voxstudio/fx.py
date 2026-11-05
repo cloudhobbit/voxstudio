@@ -5,10 +5,15 @@ default `ffmpeg` does), so every pitch shift has a fallback built from `asetrate
 timbre a little more but is always available.
 """
 import functools
+import json
 import shutil
 import subprocess
+import threading
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
+
+import numpy as np
 
 SAMPLE_RATE = 24000
 
@@ -110,3 +115,89 @@ def apply_chain(wav_in: Path, wav_out: Path, pitch: float, effect: str, space: s
         raise RuntimeError("ffmpeg is needed for pitch, effects and spaces (brew install ffmpeg / apt install ffmpeg)")
     subprocess.run([caps.ffmpeg, "-y", "-v", "error", "-i", str(wav_in), "-af", filters,
                     "-ar", str(SAMPLE_RATE), "-ac", "1", "-c:a", "pcm_s16le", str(wav_out)], check=True)
+
+
+def to_s16(audio) -> bytes:
+    return (np.clip(np.asarray(audio, dtype=np.float32), -1.0, 1.0) * 32767).astype("<i2").tobytes()
+
+
+def stream_chain(chunks: Iterable, pitch: float, effect: str, space: str, caps: Capabilities) -> Iterator[bytes]:
+    """Float audio in, 16-bit PCM bytes out, through the same chain as apply_chain but as the audio arrives.
+
+    With no pitch, effect or space the audio only changes format. Otherwise one ffmpeg process filters the stream:
+    a helper thread feeds it while this generator reads what comes out, so sound leaves before the input ends.
+    """
+    filters = chain(pitch, effect, space, caps)
+    if not filters:
+        for chunk in chunks:
+            yield to_s16(chunk)
+        return
+    if not caps.ffmpeg:
+        raise RuntimeError("ffmpeg is needed for pitch, effects and spaces (brew install ffmpeg / apt install ffmpeg)")
+    proc = subprocess.Popen([caps.ffmpeg, "-v", "error", "-f", "f32le", "-ar", str(SAMPLE_RATE), "-ac", "1", "-i", "pipe:0",
+                             "-af", filters, "-f", "s16le", "-ar", str(SAMPLE_RATE), "-ac", "1", "-flush_packets", "1", "pipe:1"],
+                            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    failed: list[BaseException] = []
+
+    def feed() -> None:
+        try:
+            for chunk in chunks:
+                try:
+                    proc.stdin.write(np.asarray(chunk, dtype="<f4").tobytes())
+                except (OSError, ValueError):   # the reader went away and the pipe is closed; stop quietly
+                    break
+        except BaseException as e:              # the engine failed: report it from the reading side
+            failed.append(e)
+        finally:
+            close = getattr(chunks, "close", None)
+            if close:
+                close()
+            try:
+                proc.stdin.close()
+            except OSError:
+                pass
+
+    feeder = threading.Thread(target=feed, name="fx-feed", daemon=True)
+    feeder.start()
+    try:
+        while True:
+            data = proc.stdout.read1(8192)
+            if not data:
+                break
+            yield data
+        feeder.join()
+        code = proc.wait()
+        if failed:
+            raise failed[0]
+        if code:
+            raise RuntimeError(f"ffmpeg failed: {proc.stderr.read().decode(errors='replace').strip()[:300]}")
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+        for pipe in (proc.stdout, proc.stderr):
+            pipe.close()
+
+
+def measure_loudness(wav: Path, caps: Capabilities) -> tuple[float, float] | None:
+    """(integrated loudness in LUFS, true peak in dBTP) by EBU R128, or None when it cannot be measured
+    (no ffmpeg, or audio too short or too quiet to gate)."""
+    if not caps.ffmpeg:
+        return None
+    done = subprocess.run([caps.ffmpeg, "-hide_banner", "-nostats", "-i", str(wav), "-af", "loudnorm=print_format=json", "-f", "null", "-"],
+                          capture_output=True, text=True)
+    start, end = done.stderr.rfind("{"), done.stderr.rfind("}")
+    if done.returncode or start < 0 or end < start:
+        return None
+    try:
+        report = json.loads(done.stderr[start:end + 1])
+        loudness, peak = float(report["input_i"]), float(report["input_tp"])
+    except (ValueError, KeyError):
+        return None
+    if not np.isfinite(loudness) or loudness < -60:
+        return None
+    return loudness, peak
+
+
+def levelling_gain(loudness: float, peak: float, target: float = -16.0, ceiling: float = -1.0) -> float:
+    """Decibels to add so the audio sits at `target` LUFS, held back so its peak stays under `ceiling`."""
+    return round(min(target - loudness, ceiling - peak), 2)

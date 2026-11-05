@@ -3,6 +3,7 @@ its base URL to http://127.0.0.1:7860/v1 (the API key is ignored).
 
 `voice` takes the OpenAI names (mapped to the nearest Vox Studio voice), any voice id, a blend
 (`af_heart:0.6,bf_emma:0.4`) or a saved signature (`@narrator`). Extra fields `pitch`, `effect` and `space` work too.
+`response_format: "pcm"` is streamed: bytes leave after the first sentence, not the last.
 """
 import io
 import subprocess
@@ -10,7 +11,7 @@ from typing import Annotated
 
 import soundfile as sf
 from fastapi import Body, FastAPI
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from .catalogue import VOICES
 from .fx import SAMPLE_RATE
@@ -36,8 +37,6 @@ def encode(wav_path, fmt: str, caps) -> bytes:
     if fmt == "wav":
         return wav_path.read_bytes()
     audio, _ = sf.read(wav_path, dtype="int16")
-    if fmt == "pcm":   # raw 24 kHz, 16-bit, mono, little-endian: what OpenAI's pcm is
-        return audio.tobytes()
     if fmt == "flac":
         buf = io.BytesIO()
         sf.write(buf, audio, SAMPLE_RATE, format="FLAC")
@@ -50,7 +49,7 @@ def encode(wav_path, fmt: str, caps) -> bytes:
     return done.stdout
 
 
-def register(app: FastAPI, render, cache, caps, engine_name: str) -> None:
+def register(app: FastAPI, synth, cache, caps, engine_name: str) -> None:
     @app.post("/v1/audio/speech", tags=["OpenAI-compatible"])
     def speech(body: Annotated[dict, Body()]):
         """Text to speech in the OpenAI shape: {model, input, voice, response_format, speed}."""
@@ -77,9 +76,13 @@ def register(app: FastAPI, render, cache, caps, engine_name: str) -> None:
             return error("'pitch' must be between -12 and 12 semitones", param="pitch")
         speed = min(2.0, max(0.5, speed))   # the engine's own range
         try:
-            r = render(text, voice, speed, pitch, str(body.get("effect", "none")), str(body.get("space", "dry")), body.get("project"), True)
+            line = synth.plan(text, voice, speed, pitch, str(body.get("effect", "none")), str(body.get("space", "dry")), body.get("project"))
+            if fmt == "pcm":   # raw audio can leave while it is still being made
+                return StreamingResponse(synth.stream(line), media_type=MEDIA[fmt],
+                                         headers={"X-Voxstudio-Key": line.key, "X-Voxstudio-Cached": str(line.cached).lower()})
+            r = synth.render(line)
             data = encode(cache.wav(r["key"]), fmt, caps)
-        except ValueError as e:
+        except (ValueError, RuntimeError) as e:
             return error(str(e), param="voice" if "voice" in str(e).lower() else None)
         return Response(content=data, media_type=MEDIA[fmt], headers={"X-Voxstudio-Key": r["key"], "X-Voxstudio-Duration": str(r["duration"]),
                                                                        "X-Voxstudio-Cached": str(r["cached"]).lower()})

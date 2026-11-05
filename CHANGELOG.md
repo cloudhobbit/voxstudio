@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.3.0 (5 Nov 2026)
+
+- **Sound starts after the first sentence.** `POST /api/speak/stream` sends 16-bit PCM while the line is still
+  being made, and the Workbench plays it live. On a laptop a 14-second paragraph starts in about 0.4 s instead of
+  1.4 s, effects included. OpenAI-style requests with `response_format: "pcm"` are streamed too.
+- **Inline control:** `[pause 0.8]`, `*emphasis*`, `[slow]…[/slow]` and `[fast]…[/fast]` inside any text. The
+  marks never appear in captions. Emphasis uses the engine's stress marks and is subtle.
+- **Loudness levelling on export:** each block gets one gain to reach −16 LUFS (EBU R128), so mixed voices sit
+  together. On by default; `"loudness": null` leaves levels alone.
+- Markdown import keeps `*emphasis*` instead of dropping it.
+- Under the hood there is now one synthesis path: rendering a line is reading its stream to the end. A listener
+  who leaves cancels the rest of the work.
+- JavaScript unit tests for the Mixer maths and the router run in CI.
+- The app's own files are served with `Cache-Control: no-cache`, so an upgrade never leaves old scripts in the browser.
+
 ## 0.2.0 (5 Nov 2026)
 
 - **OpenAI-compatible speech:** `POST /v1/audio/speech` (plus `/v1/models` and `/v1/audio/voices`). Point any

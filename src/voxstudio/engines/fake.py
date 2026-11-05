@@ -1,9 +1,11 @@
 """A stand-in engine: a 0.2 s tone per word. Used by the tests and by `voxstudio serve --engine fake`,
 so the app can be developed and demonstrated without downloading a model."""
+import re
+
 import numpy as np
 
 from ..catalogue import VOICES
-from .base import Parts, VoiceInfo, Words
+from .base import Parts, VoiceInfo, Words, bracket_word
 
 
 class FakeEngine:
@@ -26,12 +28,21 @@ class FakeEngine:
         return self.speak_timed(text, parts, speed)[0]
 
     def speak_timed(self, text: str, parts: Parts, speed: float) -> tuple[np.ndarray, Words]:
+        pieces = list(self.speak_stream(text, parts, speed))
+        return np.concatenate([a for a, _ in pieces]), [w for _, ws in pieces for w in ws]
+
+    def speak_stream(self, text: str, parts: Parts, speed: float):
+        """One piece per sentence, like a real engine."""
         self.said.append(text)
         # the blend's weights shift the tone, so different mixes give different audio (and cache keys)
         pitch = 220 + 40 * sum(i * w for i, (_, w) in enumerate(parts))
-        words = text.split() or [""]
-        step = 0.2 / speed
-        t = np.arange(int(step * self.sample_rate * len(words))) / self.sample_rate
-        audio = (0.3 * np.sin(2 * np.pi * pitch * t)).astype(np.float32)
-        timings = [(w.strip(".,!?;:\"'()"), i * step, i * step + step * 0.9) for i, w in enumerate(words)]
-        return audio, timings
+        step, done = 0.2 / speed, 0
+        for sentence in re.split(r"(?<=[.!?])\s+", text.strip()) or [""]:
+            words = sentence.split() or [""]
+            t = np.arange(int(step * self.sample_rate * len(words))) / self.sample_rate
+            audio = (0.3 * np.sin(2 * np.pi * pitch * t)).astype(np.float32)
+            yield audio, [(w.strip(".,!?;:\"'()"), (done + i) * step, (done + i) * step + step * 0.9) for i, w in enumerate(words)]
+            done += len(words)
+
+    def emphasise(self, stretch: str, parts: Parts) -> str:
+        return " ".join(bracket_word(w) for w in stretch.split())

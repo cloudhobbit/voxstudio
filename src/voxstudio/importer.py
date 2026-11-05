@@ -62,8 +62,8 @@ def _markdown(text: str) -> list[dict]:
 
 def _inline(text: str) -> str:
     text = re.sub(r"`([^`]*)`", r"\1", text)
-    text = re.sub(r"(\*\*|__)(.+?)\1", r"\2", text)
-    text = re.sub(r"(?<!\w)[*_](.+?)[*_](?!\w)", r"\1", text)
+    text = re.sub(r"(\*\*|__)(.+?)\1", r"*\2*", text)        # bold and italics both become spoken emphasis
+    text = re.sub(r"(?<!\w)_(?=\S)(.+?)(?<=\S)_(?!\w)", r"*\1*", text)
     return re.sub(r"~~(.+?)~~", r"\1", text).strip()
 
 

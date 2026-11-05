@@ -15,6 +15,7 @@ uv venv && uv pip install -e ".[dev]"
 .venv/bin/pytest                 # seconds, fake engine
 .venv/bin/pytest --slow          # also loads Kokoro once
 .venv/bin/ruff check src tests
+node --test tests/js/*.test.mjs   # front-end logic (Node 22+)
 .venv/bin/voxstudio serve --engine fake --workspace /tmp/vox   # the UI without a model
 ```
 

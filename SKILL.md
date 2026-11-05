@@ -12,6 +12,9 @@ If your client supports MCP, `voxstudio mcp` (stdio) offers the same things as t
 `export_project`, …) and returns file paths. Tools that speak the OpenAI API can use
 `http://127.0.0.1:7860/v1/audio/speech`. The HTTP calls below always work.
 
+Inside any text: `[pause 0.8]` adds silence, `*word*` adds emphasis, `[slow]…[/slow]` and `[fast]…[/fast]` change
+pace. `POST /api/speak/stream` (same body as `/api/speak`) returns raw 16-bit 24 kHz mono PCM as it is made.
+
 ## Check it is running
 
 ```bash

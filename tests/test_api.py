@@ -196,6 +196,13 @@ def test_placeholder_page_is_served(client):
     assert r.status_code == 200 and "Vox Studio" in r.text
 
 
+def test_app_files_revalidate_but_audio_is_cached_for_good(client):
+    assert client.get("/app.js").headers["cache-control"] == "no-cache"
+    assert client.get("/api/health").headers["cache-control"] == "no-cache"
+    url = client.post("/api/speak", json={"text": "cache headers", "voice": "af_heart"}).json()["url"]
+    assert "immutable" in client.get(url).headers["cache-control"]
+
+
 @pytest.mark.slow
 def test_real_kokoro_speaks_and_caches(tmp_path):
     from fastapi.testclient import TestClient

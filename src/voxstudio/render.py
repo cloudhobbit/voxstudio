@@ -13,6 +13,7 @@ from pathlib import Path
 import numpy as np
 import soundfile as sf
 
+from . import markup
 from .fx import SAMPLE_RATE, Capabilities
 
 MAX_CHARS = 42
@@ -81,8 +82,10 @@ def assemble(blocks: list[dict], cache_root: Path) -> dict:
             audio = audio.mean(axis=1)
         if sr != SAMPLE_RATE:
             raise ValueError(f"Block {b['id']} has sample rate {sr}, expected {SAMPLE_RATE}")
+        if b.get("gain_db"):   # loudness levelling: one gain per block, so mixed voices sit together
+            audio = np.clip(audio * 10 ** (b["gain_db"] / 20), -1.0, 1.0).astype(np.float32)
         length = len(audio) / SAMPLE_RATE
-        block_words = [(w, round(t + s, 3), round(t + e, 3)) for w, s, e in punctuate(b.get("words") or [], b["text"])]
+        block_words = [(w, round(t + s, 3), round(t + e, 3)) for w, s, e in punctuate(b.get("words") or [], markup.plain(b["text"]))]
         words.extend(block_words)
         cues.extend(group_captions(block_words))   # captions never straddle two blocks
         spans.append({"id": b["id"], "start": round(t, 3), "end": round(t + length, 3)})

@@ -22,11 +22,11 @@ def test_one_colon_line_is_not_dialogue():
     assert detect("Time: 10:30 was when it happened, and nobody spoke.") == "text"
 
 
-def test_markdown_is_stripped_to_words():
+def test_markdown_is_stripped_to_words_and_keeps_emphasis():
     md = "# Chapter One\n\nThe **quick** fox, see [the docs](https://x.y/z), ran `fast`.\n\n- first point\n- second point\n\n```\ncode()\n```\n\n> quoted _line_\n\n---\n"
     r = parse(md)
     assert r["format"] == "markdown"
-    assert [b["text"] for b in r["blocks"]] == ["Chapter One.", "The quick fox, see the docs, ran fast.", "first point second point", "quoted line"]
+    assert [b["text"] for b in r["blocks"]] == ["Chapter One.", "The *quick* fox, see the docs, ran fast.", "first point second point", "quoted *line*"]
 
 
 def test_captions_are_joined_back_into_paragraphs():

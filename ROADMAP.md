@@ -1,7 +1,7 @@
 # Roadmap
 
 Three tracks. Each item says what a user gets and how we will know it worked. Updated at every release;
-last update 5 Nov 2026 (0.2.0).
+last update 5 Nov 2026 (0.3.0).
 
 ## Studio: narration
 
@@ -11,9 +11,10 @@ last update 5 Nov 2026 (0.2.0).
 | **Shipped 0.2** | MCP server (`voxstudio mcp`) | An agent exports a captioned narration with no HTTP knowledge |
 | **Shipped 0.2** | Script import: Markdown, SRT/VTT, `NAME: line` dialogue | A two-speaker scene becomes blocks with two voices in one step |
 | **Shipped 0.2** | Docker image | `docker run -p 7860:7860 …` serves the app |
-| Next (0.3) | Streaming first audio | The Workbench starts playing within 500 ms of pressing Hear on a long line |
-| Next (0.3) | Pauses and emphasis inside a block | `[pause 0.8]` and `*word*` change the audio and never appear in captions |
-| Next (0.3) | Loudness levelling on export | Mixed voices in one export sit within 1 LU of each other |
+| **Shipped 0.3** | Streaming first audio | Met: first bytes in 350–510 ms on a 14-second paragraph (M-series laptop, Kokoro), down from 1.4 s |
+| **Shipped 0.3** | Pauses, pace and emphasis inside a block | Met: `[pause 0.8]` and `*word*` change the audio and never appear in captions (tested) |
+| **Shipped 0.3** | Loudness levelling on export | Met: two blocks 14 dB apart come out within 1 LU of each other (tested) |
+| Next (0.4) | Stronger emphasis | A listener picks the emphasised word in a blind A/B more often than chance; today's stress marks are subtle |
 | Later | Project cast (named speakers) | Changing one cast entry re-voices every block of that speaker |
 | Later | Long scripts: a queue that survives a restart, chapters, M4B | A 3-hour book exports after an interrupted render without starting over |
 | Later | A second engine (Piper) | A language Kokoro lacks can be narrated with captions |

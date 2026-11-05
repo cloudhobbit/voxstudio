@@ -26,10 +26,10 @@ Hear an export made with it: [chapter-one.mp3](docs/demo/chapter-one.mp3) and [i
 ## 20-second tour
 
 1. **Library**: every voice says your line. Filter by gender, accent and grade, favourite, rate, compare four back to back.
-2. **Workbench**: pick a voice, set speed, pitch, a character effect (robot, ghost, radio…) and a space (room, hall, phone…). Hear it in about a second. Save it as a preset.
+2. **Workbench**: pick a voice, set speed, pitch, a character effect (robot, ghost, radio…) and a space (room, hall, phone…). Sound starts after the first sentence, in under half a second. Write `[pause 0.8]`, `*emphasis*` or `[slow]…[/slow]` inside the text. Save it as a preset.
 3. **Mixer**: blend two to four voices with linked sliders; save the blend as a signature voice, `@narrator`.
 4. **Pronunciations**: `Chandrayaan: Chun-druh-yaan`, or exact phonemes. A scanner finds the names in your script.
-5. **Projects**: paste or upload a script (plain text, Markdown, SRT, or `NAME: line` dialogue with a voice per speaker), give each block a voice, render (only changed blocks re-render), export WAV or MP3 plus SRT and WebVTT captions timed from the engine's word timestamps.
+5. **Projects**: paste or upload a script (plain text, Markdown, SRT, or `NAME: line` dialogue with a voice per speaker), give each block a voice, render (only changed blocks re-render), export WAV or MP3 with loudness levelled across voices, plus SRT and WebVTT captions timed from the engine's word timestamps.
 
 Keyboard everywhere (`Space` play, `J`/`K` next voice, `F` favourite, `C` compare, `1`–`5` rate, `?` for the list).
 Light and dark themes. Works at phone width.
@@ -71,7 +71,7 @@ client.audio.speech.create(model="tts-1", voice="alloy", input="Spoken on this m
 
 `voice` takes the OpenAI names (mapped to the nearest local voice), any voice id, a blend
 (`af_heart:0.6,bf_emma:0.4`) or a saved `@signature`. Formats: `mp3`, `wav`, `flac`, `pcm`, `opus`, `aac`.
-Extra fields `pitch`, `effect` and `space` work too. Not streamed yet.
+Extra fields `pitch`, `effect` and `space` work too. `pcm` is streamed: bytes leave after the first sentence.
 
 ### MCP server
 
@@ -169,8 +169,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Roadmap
 
-Next: audio that starts playing while the rest is still rendering, pauses and emphasis inside a block, and
-loudness levelling on export. After that, a conversation mode you can talk to (`voxstudio[talk]`).
+Next: a conversation mode you can talk to (`voxstudio[talk]`), built on the streaming that shipped in 0.3.
 [ROADMAP.md](ROADMAP.md) has the list with a success measure for each item, and
 [docs/decisions](docs/decisions/README.md) explains the choices behind the design.
 

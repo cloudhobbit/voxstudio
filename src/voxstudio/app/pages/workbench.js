@@ -18,17 +18,21 @@ async function hear() {
   const text = els.text.value.trim();
   if (!text) { els.text.focus(); return; }
   els.hearBtn.disabled = true;
+  const req = { text, ...settings(), project: store.get("project") || null };
+  document.dispatchEvent(new CustomEvent("vox:busy", { detail: 1 }));
   try {
-    const r = await speak({ text, ...settings(), project: store.get("project") || null });
+    // Sound starts after the first sentence; the rest keeps arriving while it plays.
+    const live = await player.playStream(req, { id: `wb:${JSON.stringify(req)}`, title: voiceName(s.voice), subtitle: text });
+    if (live.stopped) { els.status.textContent = ""; return; }
+    const r = await speak(req, { quiet: true });   // the line is cached now: this only fetches its details
     last = { ...r, text, ...settings() };
-    player.play({ id: `wb:${r.key}`, url: r.url, title: voiceName(s.voice), subtitle: text });
-    els.status.textContent = r.cached ? "from cache" : `rendered in this session${r.queued_ahead ? ` (${r.queued_ahead} ahead)` : ""}`;
+    els.status.textContent = live.cached ? "from cache" : `first sound after ${live.firstSoundMs} ms, ${r.duration.toFixed(1)} s in all`;
     els.download.href = r.url; els.download.download = `${s.voice.replace(/[^a-z0-9]+/gi, "-")}.wav`; els.download.classList.remove("hidden"); els.download.style.display = "";
     const recent = [{ text, ...settings(), at: Date.now() }, ...local.get("wb.recent", []).filter((x) => describe(x) + x.text !== describe(settings()) + text)].slice(0, 12);
     local.set("wb.recent", recent);
     renderRecent();
-  } catch (e) { els.status.textContent = ""; }
-  finally { els.hearBtn.disabled = false; }
+  } catch (e) { els.status.textContent = ""; if (e.name !== "AbortError") toast(e.message, { kind: "error" }); }
+  finally { els.hearBtn.disabled = false; document.dispatchEvent(new CustomEvent("vox:busy", { detail: -1 })); }
 }
 const autoHear = debounce(() => { if (els.auto.checked && els.text.value.trim()) hear(); }, 300);
 
@@ -118,7 +122,8 @@ export async function mount(root, { query }) {
   const addBtn = h("button.btn", { onclick: addToProject }, { __html: icon("plus") }, `Add to project`);
   const page = h("div.page-inner.stack", {},
     h("div.card.stack", {},
-      h("div.field", {}, h("label", { for: "wb-text" }, "Text"), els.text, h("div.row.between", {}, els.pron, els.counter)),
+      h("div.field", {}, h("label", { for: "wb-text" }, "Text"), els.text, h("div.row.between", {}, els.pron, els.counter),
+        h("div.muted.small", {}, "Inside the text: ", h("code", {}, "[pause 0.8]"), " · ", h("code", {}, "*emphasis*"), " · ", h("code", {}, "[slow]…[/slow]"), " · ", h("code", {}, "[fast]…[/fast]"), ". None of it shows in captions.")),
       h("div.field", {}, h("label", { for: "wb-voice" }, "Voice"), els.picker),
       els.speed, h("div", {}, els.pitch, h("div", { style: { paddingLeft: "78px" } }, els.pitchLabel)),
       h("div.field", {}, h("span.label", {}, "Effect"), els.effects), h("div.field", {}, h("span.label", {}, "Space"), els.spaces), els.fxNote,

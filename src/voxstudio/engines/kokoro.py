@@ -4,7 +4,8 @@ from collections import OrderedDict
 import numpy as np
 
 from ..catalogue import VOICES
-from .base import Parts, VoiceInfo, Words
+from ..textsplit import pieces
+from .base import Parts, VoiceInfo, Words, bracket_word
 
 REPO = "hexgrad/Kokoro-82M"
 LANG_CODES = {"a": "en-US", "b": "en-GB", "h": "hi-IN", "e": "es", "f": "fr-FR", "i": "it", "j": "ja", "p": "pt-BR", "z": "zh"}
@@ -54,16 +55,32 @@ class KokoroEngine:
         return self.speak_timed(text, parts, speed)[0]
 
     def speak_timed(self, text: str, parts: Parts, speed: float) -> tuple[np.ndarray, Words]:
-        pipe, voice = self._voice(parts)
-        chunks, words, offset = [], [], 0.0
-        for result in pipe(text, voice=voice, speed=speed):
-            audio = np.asarray(result.audio, dtype=np.float32)
-            for tok in result.tokens or []:
-                word = tok.text.strip(".,!?;:\"'()…")
-                if word and tok.start_ts is not None and tok.end_ts is not None:
-                    words.append((word, offset + float(tok.start_ts), offset + float(tok.end_ts)))
+        chunks, words = [], []
+        for audio, piece_words in self.speak_stream(text, parts, speed):
             chunks.append(audio)
-            offset += len(audio) / self.sample_rate
+            words.extend(piece_words)
         if not chunks:
             raise ValueError(f"The engine produced no audio for: {text!r}")
         return np.concatenate(chunks), words
+
+    def speak_stream(self, text: str, parts: Parts, speed: float):
+        pipe, voice = self._voice(parts)
+        offset = 0.0
+        # Kokoro only cuts text at its own length limit, so a paragraph would arrive as one late piece.
+        # Speaking the first sentence on its own gets sound out early; the rest follows in longer stretches.
+        for piece in pieces(text) or [text]:
+            for result in pipe(piece, voice=voice, speed=speed):
+                audio = np.asarray(result.audio, dtype=np.float32)
+                words = []
+                for tok in result.tokens or []:
+                    word = tok.text.strip(".,!?;:\"'()…")
+                    if word and tok.start_ts is not None and tok.end_ts is not None:
+                        words.append((word, offset + float(tok.start_ts), offset + float(tok.end_ts)))
+                offset += len(audio) / self.sample_rate
+                yield audio, words
+
+    def emphasise(self, stretch: str, parts: Parts) -> str:
+        """Kokoro's English front end raises a word's stress with [word](+2). Other languages have no such mark."""
+        if parts[0][0][0] not in "ab":
+            return stretch
+        return " ".join(bracket_word(w) for w in stretch.split())

@@ -77,19 +77,95 @@ export function createPlayer(root) {
   function render() {
     drawWave(canvas, peaks, audio.duration ? audio.currentTime / audio.duration : 0);
     time.textContent = `${fmtTime(audio.currentTime)} / ${fmtTime(audio.duration)}`;
-    playBtn.innerHTML = icon(audio.paused ? "play" : "pause", "l");
-    playBtn.setAttribute("aria-label", audio.paused ? "Play" : "Pause");
+    const sounding = live || !audio.paused;
+    playBtn.innerHTML = icon(sounding ? "pause" : "play", "l");
+    playBtn.setAttribute("aria-label", live ? "Stop" : audio.paused ? "Play" : "Pause");
     document.querySelectorAll("[data-play-url]").forEach((el) => el.classList.toggle("playing", !audio.paused && el.dataset.playUrl === (current && current.url)));
   }
   audio.addEventListener("timeupdate", render);
   audio.addEventListener("play", render);
   audio.addEventListener("pause", render);
   audio.addEventListener("ended", () => { render(); document.dispatchEvent(new CustomEvent("vox:ended", { detail: current })); });
-  playBtn.addEventListener("click", () => (audio.paused ? audio.play() : audio.pause()));
+  playBtn.addEventListener("click", () => toggle());
   waveWrap.addEventListener("click", (e) => { const r = waveWrap.getBoundingClientRect(); if (audio.duration) audio.currentTime = ((e.clientX - r.left) / r.width) * audio.duration; });
   window.addEventListener("resize", render);
 
+  // ---- live playback: raw audio is played as it arrives, then the finished file takes over ----
+  let live = null;   // {ctrl, sources} while a stream is sounding
+  function stopStream() {
+    if (!live) return;
+    const was = live;
+    live = null;
+    was.ctrl.abort();
+    was.sources.forEach((s) => { try { s.stop(); } catch { /* already ended */ } });
+    render();
+  }
+
+  /** POST `req` to /api/speak/stream and play the audio while it is still being made.
+   *  Resolves once the whole line has arrived (and is cached): {key, url, cached, firstSoundMs, stopped}. */
+  async function playStream(req, item) {
+    stopStream();
+    audio.pause();
+    const ctrl = new AbortController();
+    const started = performance.now();
+    const res = await fetch("/api/speak/stream", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(req), signal: ctrl.signal });
+    if (!res.ok) {
+      let detail = `${res.status} ${res.statusText}`;
+      try { const j = await res.json(); detail = Array.isArray(j.detail) ? j.detail.map((d) => d.msg).join("; ") : j.detail || detail; } catch { /* not JSON */ }
+      throw new Error(detail);
+    }
+    const key = res.headers.get("X-Voxstudio-Key"), url = `/audio/${key}.wav`;
+    if (res.headers.get("X-Voxstudio-Cached") === "true") { ctrl.abort(); await play({ ...item, url }); return { key, url, cached: true, firstSoundMs: 0 }; }
+    const rate = +res.headers.get("X-Voxstudio-Sample-Rate") || 24000;
+    ctx = ctx || new (window.AudioContext || window.webkitAudioContext)();
+    if (ctx.state === "suspended") { try { await ctx.resume(); } catch { /* needs a click first */ } }
+    const mine = (live = { ctrl, sources: [] });
+    current = { ...item, url };
+    clear(info);
+    info.append(h("b", {}, item.title || ""), h("span", {}, item.subtitle || ""));
+    playBtn.disabled = false;
+    peaks = [];
+    audio.removeAttribute("src");
+    render();
+    announce(`Playing ${item.title || ""}: ${item.subtitle || ""}`);
+    const reader = res.body.getReader();
+    let carry = new Uint8Array(0), at = 0, first = null;
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (live !== mine) return { key, url, cached: false, stopped: true };
+        const bytes = new Uint8Array(carry.length + value.length);
+        bytes.set(carry); bytes.set(value, carry.length);
+        const n = bytes.length >> 1;
+        carry = bytes.slice(n * 2);
+        if (!n) continue;
+        const pcm = new Int16Array(bytes.buffer, 0, n);
+        const buf = ctx.createBuffer(1, n, rate);
+        const ch = buf.getChannelData(0);
+        for (let i = 0; i < n; i++) ch[i] = pcm[i] / 32768;
+        const src = ctx.createBufferSource();
+        src.buffer = buf; src.connect(ctx.destination);
+        at = Math.max(at, ctx.currentTime + 0.03);
+        src.start(at);
+        at += buf.duration;
+        mine.sources.push(src);
+        if (first === null) first = Math.round(performance.now() - started);
+      }
+    } catch (e) {
+      if (live !== mine) return { key, url, cached: false, stopped: true };   // stopped by the listener
+      stopStream();
+      throw e;
+    }
+    // Everything has arrived, so the server has the finished file: load it for replay, scrubbing and the waveform.
+    audio.src = url;
+    peaksFor(url).then((p) => { if (current && current.url === url) { peaks = p.peaks; render(); } }, () => {});
+    setTimeout(() => { if (live === mine) { live = null; render(); document.dispatchEvent(new CustomEvent("vox:ended", { detail: current })); } }, Math.max(0, at - ctx.currentTime) * 1000 + 60);
+    return { key, url, cached: false, firstSoundMs: first };
+  }
+
   async function play(item) {
+    stopStream();
     current = item;
     clear(info);
     info.append(h("b", {}, item.title || ""), h("span", {}, item.subtitle || ""));
@@ -103,7 +179,7 @@ export function createPlayer(root) {
     try { peaks = (await peaksFor(item.url)).peaks; render(); } catch { /* fine */ }
   }
 
-  function toggle() { if (!current) return; audio.paused ? audio.play() : audio.pause(); }
+  function toggle() { if (live) return stopStream(); if (!current) return; audio.paused ? audio.play() : audio.pause(); }
 
   // ---- compare tray ----
   function renderTray() {
@@ -132,7 +208,8 @@ export function createPlayer(root) {
   renderTray();
 
   return {
-    play, toggle, audio,
+    play, playStream, stopStream, toggle, audio,
+    get streaming() { return !!live; },
     get current() { return current; },
     get tray() { return trayItems; },
     addToTray(item) {

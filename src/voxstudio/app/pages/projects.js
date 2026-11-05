@@ -153,21 +153,22 @@ async function exportProject() {
   await save();
   const caps = store.get("health")?.capabilities || {};
   const fmt = h("select.select", { "aria-label": "Format" }, h("option", { value: "wav" }, "WAV (lossless)"), caps.mp3 ? h("option", { value: "mp3", selected: true }, "MP3") : h("option", { value: "mp3", disabled: true }, "MP3 (needs ffmpeg with libmp3lame)"));
-  const srt = h("input", { type: "checkbox", id: "ex-srt", checked: true }), vtt = h("input", { type: "checkbox", id: "ex-vtt", checked: true });
+  const srt = h("input", { type: "checkbox", id: "ex-srt", checked: true }), vtt = h("input", { type: "checkbox", id: "ex-vtt", checked: true }), level = h("input", { type: "checkbox", id: "ex-level", checked: local.get("projects.level", true) });
   const ok = await dialog({ title: "Export", body: "Blocks that are not rendered yet are rendered first. Captions come from the engine's word timings and keep the original spelling.",
-    form: h("div.stack.tight", {}, h("div.field", {}, h("label", {}, "Audio"), fmt), h("label.row", { for: "ex-srt" }, srt, "SRT captions"), h("label.row", { for: "ex-vtt" }, vtt, "WebVTT captions")), ok: "Export" });
+    form: h("div.stack.tight", {}, h("div.field", {}, h("label", {}, "Audio"), fmt), h("label.row", { for: "ex-srt" }, srt, "SRT captions"), h("label.row", { for: "ex-vtt" }, vtt, "WebVTT captions"), h("label.row", { for: "ex-level", title: "Each block gets one gain so different voices sit at the same loudness. Needs ffmpeg." }, level, "Level loudness (−16 LUFS, the usual target for speech)")), ok: "Export" });
   if (!ok) return;
   const bar = h("div.bar", {}, h("span", { style: { width: "0%" } })), label = h("span.small.muted", {}, "Exporting…");
   clear(els.progress); els.progress.append(h("div.row", { style: { flex: 1 } }, label, h("div", { style: { flex: 1 } }, bar)));
   try {
-    const { job_id } = await api.post(`/api/projects/${p.slug}/export`, { format: fmt.value, captions: [srt.checked && "srt", vtt.checked && "vtt"].filter(Boolean) });
+    const { job_id } = await api.post(`/api/projects/${p.slug}/export`, { format: fmt.value, captions: [srt.checked && "srt", vtt.checked && "vtt"].filter(Boolean), loudness: level.checked ? -16 : null });
+    local.set("projects.level", level.checked);
     const job = await api.job(job_id, (j) => { label.textContent = `Rendering ${j.done} of ${j.total}`; bar.firstChild.style.width = `${(100 * j.done) / j.total}%`; });
     clear(els.progress);
     if (job.status === "failed") throw new Error(job.error);
     Object.assign(p, await api.get(`/api/projects/${p.slug}`));
     renderBlocks();
     const audio = job.result.files.find((f) => /\.(wav|mp3)$/.test(f.name));
-    toast(`Exported ${fmtTime(job.result.duration)} with ${job.result.cues} caption cues`, { kind: "ok", action: audio ? { label: "Play", fn: () => player.play({ id: `export:${p.slug}`, url: audio.url, title: p.title, subtitle: "exported" }) } : null });
+    toast(`Exported ${fmtTime(job.result.duration)} with ${job.result.cues} caption cues${job.result.levelled ? ", loudness levelled" : ""}`, { kind: "ok", action: audio ? { label: "Play", fn: () => player.play({ id: `export:${p.slug}`, url: audio.url, title: p.title, subtitle: "exported" }) } : null });
   } catch (e) { clear(els.progress); toast(e.message, { kind: "error", ms: 8000 }); }
 }
 

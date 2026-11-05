@@ -42,6 +42,15 @@ class AudioCache:
         (self.root / f"{key}.json").write_text(json.dumps(meta, ensure_ascii=False))
         return meta
 
+    def annotate(self, key: str, **fields) -> dict | None:
+        """Add facts learned later (such as measured loudness) to a cached line's metadata."""
+        meta = self.meta(key)
+        if meta is None:
+            return None
+        meta.update(fields)
+        (self.root / f"{key}.json").write_text(json.dumps(meta, ensure_ascii=False))
+        return meta
+
     def stats(self) -> dict:
         files = list(self.root.glob("*.wav"))
         return {"files": len(files), "mb": round(sum(f.stat().st_size for f in files) / 1e6, 1)}

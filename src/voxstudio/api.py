@@ -1,15 +1,12 @@
 """The HTTP API. Local only: binds 127.0.0.1 and refuses other hosts and origins on writes."""
 import logging
 import re
-import tempfile
 import time
 from pathlib import Path
 from urllib.parse import urlsplit
 
-import numpy as np
-import soundfile as sf
 from fastapi import FastAPI, Query, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -18,10 +15,12 @@ from . import render as rendering
 from .cache import AudioCache, make_key
 from .catalogue import BLENDS, SAMPLE_LINES, VOICES, grade_note
 from .engines import load_engine
-from .fx import EFFECTS, SAMPLE_RATE, SPACES, Capabilities, apply_chain
+from .fx import EFFECTS, SAMPLE_RATE, SPACES, Capabilities, levelling_gain
+from .fx import measure_loudness as fx_measure
 from .jobs import JobManager
 from .openai_compat import register as register_openai
 from .specs import SpecError, describe, parse_voice
+from .synth import Synth
 from .worker import TTSWorker
 from .workspace import Conflict, NotFound, Workspace, etag
 
@@ -99,6 +98,7 @@ class ImportIn(BaseModel):
 class ExportIn(BaseModel):
     format: str = "wav"
     captions: list[str] = ["srt", "vtt"]
+    loudness: float | None = Field(-16.0, ge=-30, le=-9)   # target in LUFS for every block; null leaves levels alone
 
 
 class ScanIn(BaseModel):
@@ -144,6 +144,10 @@ def create_app(workspace: Workspace, engine_name: str = "kokoro", worker: TTSWor
             return JSONResponse({"detail": "Cross-site requests are not allowed"}, status_code=403)
         started = time.time()
         response = await call_next(request)
+        if "cache-control" not in response.headers:
+            # The app's own files must be checked on every load, or an upgrade leaves old scripts in the browser.
+            # Rendered audio sets its own long-lived header: its names are content hashes and never change meaning.
+            response.headers["Cache-Control"] = "no-cache"
         log.info("%s %s %s %.0fms", request.method, request.url.path, response.status_code, (time.time() - started) * 1000)
         return response
 
@@ -170,42 +174,19 @@ def create_app(workspace: Workspace, engine_name: str = "kokoro", worker: TTSWor
         if space not in SPACES:
             raise ValueError(f"Unknown space '{space}' (use {', '.join(SPACES)})")
 
-    def finish(key: str, audio: np.ndarray, inputs: dict, pitch: float, effect: str, space: str, extra: dict) -> dict:
-        """pitch + effect + space through ffmpeg (when needed), into the cache."""
-        if not pitch and effect == "none" and space == "dry":
-            return cache.put(key, audio, inputs, extra)
-        with tempfile.TemporaryDirectory() as tmp:
-            raw = Path(tmp) / "raw.wav"
-            sf.write(raw, audio, SAMPLE_RATE, subtype="FLOAT")
-            apply_chain(raw, cache.wav(key), pitch, effect, space, caps)
-        return cache.put_file(key, inputs, extra)
+    synth = Synth(ws, worker, cache, caps)
 
     def plan(text: str, voice: str, speed: float, pitch: float, effect: str, space: str, project: str | None,
              pronounce_: bool = True, table: dict | None = None) -> tuple[str, dict]:
         """The cache key (and inputs) of a line without rendering it."""
-        parts = parse_voice(voice, sigs())
-        check_sound(effect, space)
-        spoken = pronounce.apply(text, table if table is not None else ws.pronunciation_table(project)) if pronounce_ else text
-        speed, pitch = float(speed), float(pitch)   # 0 and 0.0 must give the same key
-        inputs = {"kind": "speech", "engine": worker.engine.name, "spoken": spoken, "voice": parts, "speed": speed,
-                  "pitch": pitch, "effect": effect, "space": space, "fx": "rb" if caps.rubberband else "ar"}
-        return make_key(**inputs), inputs
+        line = synth.plan(text, voice, speed, pitch, effect, space, project, pronounce_, table)
+        return line.key, line.inputs
 
     def render(text: str, voice: str, speed: float, pitch: float, effect: str, space: str,
                project: str | None, pronounce_: bool, table: dict | None = None) -> dict:
-        key, inputs = plan(text, voice, speed, pitch, effect, space, project, pronounce_, table)
-        parts, spoken, speed, pitch = inputs["voice"], inputs["spoken"], inputs["speed"], inputs["pitch"]
-        meta = cache.meta(key)
-        if meta:
-            return {"key": key, "url": f"/audio/{key}.wav", "duration": meta["duration"], "cached": True,
-                    "queued_ahead": 0, "words": meta.get("words", [])}
-        ahead = worker.queued
-        audio, words = worker.speak_timed(spoken, parts, speed)
-        meta = finish(key, audio, inputs, pitch, effect, space, {"text": text, "words": words})
-        return {"key": key, "url": f"/audio/{key}.wav", "duration": meta["duration"], "cached": False,
-                "queued_ahead": ahead, "words": words}
+        return synth.render(synth.plan(text, voice, speed, pitch, effect, space, project, pronounce_, table))
 
-    app.state.render = render
+    app.state.render, app.state.synth = render, synth
 
     def sample_for(voice: str, text: str, speed: float = 1.0, pitch: float = 0.0) -> dict | None:
         """The cached sample of `text` in this voice, if it was rendered before (no rendering here)."""
@@ -284,6 +265,16 @@ def create_app(workspace: Workspace, engine_name: str = "kokoro", worker: TTSWor
     @app.post("/api/speak")
     def speak(req: SpeakIn):
         return render(req.text, req.voice, req.speed, req.pitch, req.effect, req.space, req.project, req.pronounce)
+
+    @app.post("/api/speak/stream")
+    def speak_stream(req: SpeakIn):
+        """The same line as /api/speak, as raw audio while it is being made: 16-bit mono PCM at 24 kHz. Sound starts
+        after the first sentence instead of the last. Reading to the end caches the line; `X-Voxstudio-Key` names it,
+        so /api/speak with the same body then answers at once with the word timings."""
+        line = synth.plan(req.text, req.voice, req.speed, req.pitch, req.effect, req.space, req.project, req.pronounce)
+        return StreamingResponse(synth.stream(line), media_type="audio/pcm", headers={
+            "X-Voxstudio-Key": line.key, "X-Voxstudio-Cached": str(line.cached).lower(), "X-Voxstudio-Sample-Rate": str(SAMPLE_RATE),
+            "Cache-Control": "no-store"})
 
     @app.post("/api/speak/batch")
     def speak_batch(reqs: list[SpeakIn]):
@@ -518,6 +509,21 @@ def create_app(workspace: Workspace, engine_name: str = "kokoro", worker: TTSWor
 
         return {"job_id": jobs.start("render", len(data["blocks"]), run).id}
 
+    def level(blocks: list[dict], target: float) -> dict | None:
+        """Give every block the gain that brings it to `target` LUFS (measured once per line, kept with the cache)."""
+        if not caps.ffmpeg:
+            return None
+        gains = []
+        for b in blocks:
+            meta = cache.meta(b["key"]) or {}
+            if "loudness" not in meta:
+                measured = fx_measure(cache.wav(b["key"]), caps)
+                meta = cache.annotate(b["key"], loudness=list(measured) if measured else None) or meta
+            if meta.get("loudness"):
+                b["gain_db"] = levelling_gain(*meta["loudness"], target=target)
+            gains.append(b.get("gain_db"))
+        return {"target": target, "gains": gains}
+
     @app.post("/api/projects/{slug}/export")
     def export_project(slug: str, body: ExportIn):
         data, _ = ws.projects.load(slug)
@@ -533,11 +539,12 @@ def create_app(workspace: Workspace, engine_name: str = "kokoro", worker: TTSWor
             blocks = render_blocks(slug, job)
             if job.failed:
                 raise ValueError(f"{len(job.failed)} block(s) failed: " + "; ".join(f["error"] for f in job.failed[:3]))
+            levelled = level(blocks, body.loudness) if body.loudness is not None else None
             assembled = rendering.assemble(blocks, cache.root)
             files = rendering.export(assembled, ws.exports / slug, slug, body.format, captions, caps, blocks)
             job.done = job.total
             job.result = {"duration": assembled["duration"], "files": [{"name": f.name, "url": f"/exports/{slug}/{f.name}", "bytes": f.stat().st_size} for f in files],
-                          "cues": len(assembled["cues"])}
+                          "cues": len(assembled["cues"]), "levelled": levelled}
 
         return {"job_id": jobs.start("export", len(data["blocks"]), run).id}
 
@@ -581,7 +588,7 @@ def create_app(workspace: Workspace, engine_name: str = "kokoro", worker: TTSWor
         return {"removed": cache.trim(older_than_days), **cache.stats()}
 
     app.state.jobs = jobs
-    register_openai(app, render, cache, caps, worker.engine.name)
+    register_openai(app, synth, cache, caps, worker.engine.name)
     if (APP_DIR / "index.html").exists():
         app.mount("/", StaticFiles(directory=APP_DIR, html=True), name="app")
     return app
