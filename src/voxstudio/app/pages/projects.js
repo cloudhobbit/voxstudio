@@ -185,6 +185,7 @@ async function pasteScript() {
 async function openProject(el, slug) {
   clear(el);
   try { p = await api.get(`/api/projects/${slug}`); } catch (e) { if (e.status === 404) go("projects"); return; }
+  if (!store.get("projects").some((x) => x.slug === slug)) await refreshProjects();   // made elsewhere (the API, an agent): learn about it
   store.set("project", slug); local.set("project", slug); document.getElementById("project-select").value = slug;
   dirty = false;
   const title = h("input.input", { value: p.title, "aria-label": "Project title", style: { fontWeight: 600, fontSize: "16px", maxWidth: "420px" }, onchange: () => { p.title = title.value.trim() || p.title; markDirty(); setTitle(p.title, actions()); } });

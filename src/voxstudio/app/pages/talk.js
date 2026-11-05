@@ -36,7 +36,7 @@ function onEvent(e) {
   }
   if (e.type === "interrupted") { pcm.stop(); if (turn) turn.body.append(h("span.muted", {}, " — interrupted")); return; }
   if (e.type === "metrics" && turn && e.voice_to_voice_ms !== undefined) {
-    const parts = [`heard in ${secs(e.stt_ms)}`, `first words after ${secs(e.llm_first_piece_ms)}`, `voice in ${secs(e.tts_first_audio_ms)}`];
+    const parts = [e.stt_ms ? `heard in ${secs(e.stt_ms)}` : null, `first words after ${secs(e.llm_first_piece_ms)}`, `voice in ${secs(e.tts_first_audio_ms)}`].filter(Boolean);
     turn.el.append(h("div.small.muted", { title: "From the end of your turn to the first sound, and where the time went" },
       `${secs(e.from_speech_end_ms)} to the first sound (${parts.join(", ")}${e.end_silence_ms ? `, ${secs(e.end_silence_ms)} of that is the pause that ends your turn` : ""})`));
     return;

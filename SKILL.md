@@ -21,7 +21,7 @@ pace. `POST /api/speak/stream` (same body as `/api/speak`) returns raw 16-bit 24
 curl -s localhost:7860/api/health
 ```
 `languages` is empty while the model is still loading (about 10 s after start). If the call fails, start it:
-`voxstudio` (or `uvx voxstudio`, which installs it too). Install permanently: `pipx install voxstudio`.
+`voxstudio`. Not installed? `uvx --from git+https://github.com/cloudhobbit/voxstudio voxstudio` runs it without installing.
 
 ## Speak one line
 

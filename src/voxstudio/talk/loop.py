@@ -42,7 +42,8 @@ class _Turn:
     cancel: threading.Event = field(default_factory=threading.Event)
     done: threading.Event = field(default_factory=threading.Event)
     spoken: list = field(default_factory=list)
-    after: "_Turn | None" = None   # the turn this one replaced; it finishes first, so the history stays in order
+    after: "_Turn | None" = None   # the turn this one replaced: its words go into the history before ours
+    recorded: bool = False
 
 
 class Conversation:
@@ -164,10 +165,20 @@ class Conversation:
             turn.after = old
         return turn
 
-    @staticmethod
-    def _settle(turn: _Turn) -> None:
+    def _record(self, turn: _Turn) -> None:
+        """Write what a turn said into the history, once. Either the turn itself does it when it ends, or the turn
+        that interrupted it does, so the order is right without the new reply waiting for the old one to wind down."""
+        with self.lock:
+            if turn.recorded:
+                return
+            turn.recorded = True
+            said = " ".join(turn.spoken)
+            if said:
+                self.history.append({"role": "assistant", "content": said + (" …" if turn.cancel.is_set() else "")})
+
+    def _settle(self, turn: _Turn) -> None:
         if turn.after:
-            turn.after.done.wait(5)
+            self._record(turn.after)
             turn.after = None
 
     def _answer(self, heard: Future, eager: bool, silence_ms: int) -> None:
@@ -196,8 +207,8 @@ class Conversation:
     def _speak_only(self, turn: _Turn, text: str) -> None:
         try:
             self._settle(turn)
-            if self._speak(turn, text):
-                self.history.append({"role": "assistant", "content": text})
+            self._speak(turn, text)
+            self._record(turn)
             self.emit({"type": "done", "text": text, "interrupted": turn.cancel.is_set()})
         except Exception as e:   # the page must hear about it, not hang
             self.emit({"type": "error", "message": str(e)})
@@ -253,8 +264,7 @@ class Conversation:
                 if close:
                     close()   # drops the connection, so the model stops writing a reply nobody will hear
             said = " ".join(turn.spoken)
-            if said:
-                self.history.append({"role": "assistant", "content": said + (" …" if turn.cancel.is_set() else "")})
+            self._record(turn)
             m["reply_ms"] = round((self.clock() - t_end) * 1000)
             self.emit({"type": "metrics", **m})
             self.emit({"type": "done", "text": said, "interrupted": turn.cancel.is_set()})

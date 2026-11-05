@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.1 (5 Nov 2026)
+
+- Talk: after you interrupt, the next reply no longer waits for the old one to wind down (it could add a second).
+- Talk: typed turns no longer show a meaningless "heard in 0.0 s".
+- Projects: the project picker is no longer blank when a project was created through the API or by an agent.
+- README: new screenshots made with the real engine, a table of measurements, and a second demo export.
+
 ## 0.4.0 (5 Nov 2026)
 
 - **Talk (experimental), as the optional extra `voxstudio[talk]`:** a voice conversation with any of your voices.
