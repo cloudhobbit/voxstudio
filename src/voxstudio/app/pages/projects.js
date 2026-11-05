@@ -4,6 +4,7 @@ import { icon } from "../lib/icons.js";
 import { go } from "../lib/router.js";
 import { h, clear, debounce, fmtTime, local } from "../lib/store.js";
 import { chip, dialog, empty, iconBtn, menu, popover, slider, toast } from "../lib/ui.js";
+import { scriptImport } from "../lib/scriptimport.js";
 import { voicePicker } from "../lib/voicepicker.js";
 import { player, refreshProjects, refreshVoices, setTitle, store, voiceName } from "../app.js";
 
@@ -26,12 +27,12 @@ async function listProjects(el) {
 
 async function createProject() {
   const title = h("input.input", { placeholder: "Chapter one", "aria-label": "Title", required: true });
-  const script = h("textarea.textarea", { rows: 8, placeholder: "Paste your script. Blank lines separate blocks; each block can have its own voice.", "aria-label": "Script" });
-  const picker = voicePicker({ value: local.get("projects.voice", "af_heart"), id: "np-voice" });
-  const ok = await dialog({ title: "New project", form: h("div.stack.tight", {}, h("div.field", {}, h("label", {}, "Title"), title), h("div.field", {}, h("label", {}, "Script (optional)"), script), h("div.field", {}, h("label", { for: "np-voice" }, "Voice for every block"), picker)), ok: "Create" });
+  const imp = scriptImport({ defaultVoice: local.get("projects.voice", "af_heart"), id: "np" });
+  const ok = await dialog({ title: "New project", form: h("div.stack.tight", {}, h("div.field", {}, h("label", {}, "Title"), title), h("div.field", {}, h("label", {}, "Script (optional)"), imp)), ok: "Create" });
   if (!ok || !title.value.trim()) return;
-  local.set("projects.voice", picker.get());
-  try { const r = await api.post("/api/projects", { title: title.value.trim(), script: script.value, voice: picker.get() }); store.set("project", r.slug); local.set("project", r.slug); await refreshProjects(); go(`projects/${r.slug}`); } catch { /* toasted */ }
+  const r0 = await imp.result();
+  local.set("projects.voice", r0.voice);
+  try { const r = await api.post("/api/projects", { title: title.value.trim(), script: r0.script, format: r0.format, voice: r0.voice, voices: r0.voices }); store.set("project", r.slug); local.set("project", r.slug); await refreshProjects(); go(`projects/${r.slug}`); } catch { /* toasted */ }
 }
 
 // ---------- editor ----------
@@ -44,7 +45,7 @@ async function save() {
   if (!dirty || saving) return;
   saving = true;
   try {
-    const r = await api.put(`/api/projects/${p.slug}`, { title: p.title, blocks: p.blocks.map(({ id, text, voice, speed, pitch, effect, space, pause }) => ({ id, text, voice, speed, pitch, effect, space, pause })), pronunciations: p.pronunciations, etag: p.etag }, { quiet: true });
+    const r = await api.put(`/api/projects/${p.slug}`, { title: p.title, blocks: p.blocks.map(({ id, text, voice, speed, pitch, effect, space, pause, speaker }) => ({ id, text, voice, speed, pitch, effect, space, pause, ...(speaker ? { speaker } : {}) })), pronunciations: p.pronunciations, etag: p.etag }, { quiet: true });
     Object.assign(p, r); dirty = false;
     els.saveState.textContent = "Saved"; els.saveState.style.color = "var(--muted)";
     renderStatus();
@@ -103,7 +104,7 @@ function blockEl(b, i) {
   const st = statusOf(b.id);
   const el = h("div.card", { "data-block": b.id, style: { borderLeft: `3px solid ${blockVoiceColour(b.voice)}`, padding: "10px 12px" } },
     h("div.row.wrap", { style: { marginBottom: "6px" } },
-      h("span.muted.small.mono", { style: { width: "24px" } }, String(i + 1)), picker,
+      h("span.muted.small.mono", { style: { width: "24px" } }, String(i + 1)), b.speaker ? h("span.badge.accent", { title: "Speaker, from the imported script" }, b.speaker) : null, picker,
       h("span.badge.status" + (st.error ? ".danger" : st.cached ? ".ok" : ""), { title: st.error || "" }, st.error ? "error" : st.cached ? fmtTime(st.duration) : "not rendered"),
       h("span.muted.small", {}, [b.speed !== 1 ? `${b.speed}×` : null, b.pitch ? `${b.pitch > 0 ? "+" : ""}${b.pitch} st` : null, b.effect !== "none" ? b.effect : null, b.space !== "dry" ? b.space : null, b.pause !== 0.5 ? `pause ${b.pause}s` : null].filter(Boolean).join(" · ")),
       h("span.grow"),
@@ -171,13 +172,12 @@ async function exportProject() {
 }
 
 async function pasteScript() {
-  const ta = h("textarea.textarea", { rows: 10, placeholder: "Blank lines separate blocks.", "aria-label": "Script" });
-  const picker = voicePicker({ value: p.blocks.at(-1)?.voice || "af_heart", id: "ps-voice" });
-  if (!(await dialog({ title: "Paste a script", form: h("div.stack.tight", {}, ta, h("div.field", {}, h("label", { for: "ps-voice" }, "Voice for the new blocks"), picker)), ok: "Add blocks" }))) return;
-  const paras = ta.value.replace(/\r/g, "").split(/\n\s*\n/).map((x) => x.replace(/\s+/g, " ").trim()).filter(Boolean);
-  if (!paras.length) return;
+  const imp = scriptImport({ defaultVoice: p.blocks.at(-1)?.voice || "af_heart", id: "ps", rows: 10 });
+  if (!(await dialog({ title: "Import a script", form: imp, ok: "Add blocks" }))) return;
+  const { blocks } = await imp.result();
+  if (!blocks.length) return;
   const last = p.blocks.at(-1) || { speed: 1, pitch: 0, effect: "none", space: "dry", pause: 0.5 };
-  for (const text of paras) p.blocks.push({ id: newId(), text, voice: picker.get(), speed: last.speed, pitch: last.pitch, effect: last.effect, space: last.space, pause: last.pause });
+  for (const b of blocks) p.blocks.push({ id: newId(), ...b, speed: last.speed, pitch: last.pitch, effect: last.effect, space: last.space, pause: last.pause });
   markDirty(); renderBlocks();
 }
 
@@ -201,7 +201,7 @@ async function openProject(el, slug) {
       h("div.row.wrap", {}, title, els.saveState, h("span.grow"), els.duration),
       els.timeline, els.progress,
       h("div.row.wrap", {}, h("button.btn.sm", { onclick: () => { const last = p.blocks.at(-1) || { voice: local.get("projects.voice", "af_heart"), speed: 1, pitch: 0, effect: "none", space: "dry", pause: 0.5 }; p.blocks.push({ ...last, id: newId(), text: "" }); markDirty(); renderBlocks(); els.blocks.lastChild.querySelector("textarea").focus(); } }, { __html: icon("plus", "s") }, "Add block"),
-        h("button.btn.sm", { onclick: pasteScript }, "Paste script…"), h("button.btn.sm.ghost", { onclick: () => go(`pronunciations?project=${slug}`) }, { __html: icon("spell", "s") }, "Pronunciations"),
+        h("button.btn.sm", { onclick: pasteScript }, "Import script…"), h("button.btn.sm.ghost", { onclick: () => go(`pronunciations?project=${slug}`) }, { __html: icon("spell", "s") }, "Pronunciations"),
         h("span.grow"), h("span.label", {}, "Exports"), els.exports)),
     els.blocks);
   el.append(els.main);

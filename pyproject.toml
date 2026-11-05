@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "voxstudio"
-version = "0.1.1"
+version = "0.2.0"
 description = "A local, free voice studio: audition, blend and tune AI voices, then narrate scripts with captions. Runs offline."
 readme = "README.md"
 license = "MIT"

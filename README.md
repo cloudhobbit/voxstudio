@@ -29,7 +29,7 @@ Hear an export made with it: [chapter-one.mp3](docs/demo/chapter-one.mp3) and [i
 2. **Workbench**: pick a voice, set speed, pitch, a character effect (robot, ghost, radio…) and a space (room, hall, phone…). Hear it in about a second. Save it as a preset.
 3. **Mixer**: blend two to four voices with linked sliders; save the blend as a signature voice, `@narrator`.
 4. **Pronunciations**: `Chandrayaan: Chun-druh-yaan`, or exact phonemes. A scanner finds the names in your script.
-5. **Projects**: paste a script, one block per paragraph, give each block a voice, render (only changed blocks re-render), export WAV or MP3 plus SRT and WebVTT captions timed from the engine's word timestamps.
+5. **Projects**: paste or upload a script (plain text, Markdown, SRT, or `NAME: line` dialogue with a voice per speaker), give each block a voice, render (only changed blocks re-render), export WAV or MP3 plus SRT and WebVTT captions timed from the engine's word timestamps.
 
 Keyboard everywhere (`Space` play, `J`/`K` next voice, `F` favourite, `C` compare, `1`–`5` rate, `?` for the list).
 Light and dark themes. Works at phone width.
@@ -58,6 +58,31 @@ open("line.wav", "wb").write(requests.get("http://127.0.0.1:7860" + r["url"]).co
 
 Projects, signatures, presets and pronunciations have CRUD routes (`/api/projects`, `/api/signatures`, …).
 Writes carry an `etag`; if the file changed on disk the server answers 409 instead of overwriting.
+
+### Drop-in for the OpenAI speech API
+
+Anything that can call `/v1/audio/speech` with a custom base URL works unchanged. The key is ignored.
+
+```python
+from openai import OpenAI
+client = OpenAI(base_url="http://127.0.0.1:7860/v1", api_key="local")
+client.audio.speech.create(model="tts-1", voice="alloy", input="Spoken on this machine.").write_to_file("line.mp3")
+```
+
+`voice` takes the OpenAI names (mapped to the nearest local voice), any voice id, a blend
+(`af_heart:0.6,bf_emma:0.4`) or a saved `@signature`. Formats: `mp3`, `wav`, `flac`, `pcm`, `opus`, `aac`.
+Extra fields `pitch`, `effect` and `space` work too. Not streamed yet.
+
+### MCP server
+
+```bash
+claude mcp add voxstudio -- uvx voxstudio mcp
+```
+
+or, in any MCP client's config: `{"command": "uvx", "args": ["voxstudio", "mcp"]}`. Seven tools: `speak`,
+`list_voices`, `create_project`, `export_project`, `list_projects`, `set_pronunciation`, `save_signature`.
+It uses the Vox Studio already running on port 7860 (so the agent and the app share voices and projects), or
+starts a private one. Files are written on your machine and their paths returned.
 
 A small CLI covers scripts and cron jobs:
 
@@ -115,9 +140,18 @@ Kokoro-82M (Apache-2.0) is the first engine: 82 million parameters, runs on a CP
 An engine is a small class with `voices()`, `speak()` and `speak_timed()`; see
 [`src/voxstudio/engines/base.py`](src/voxstudio/engines/base.py). Pull requests for other engines are welcome.
 
+## Docker
+
+```bash
+docker run --rm -p 127.0.0.1:7860:7860 -v voxstudio:/data ghcr.io/cloudhobbit/voxstudio
+```
+
+CPU only. The model and your workspace live in the `/data` volume. Publishing the port on `127.0.0.1` keeps it
+off your network; there is no login.
+
 ## Security
 
-The server binds `127.0.0.1` only, refuses requests whose `Host` or `Origin` is not localhost (so a web page
+The server binds `127.0.0.1` unless you pass `--host`, refuses requests whose `Host` or `Origin` is not localhost (so a web page
 cannot talk to it), keeps every file path inside the workspace, and never builds shell commands from your text.
 
 ## Development
@@ -135,10 +169,10 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Roadmap
 
-- More engines (Piper, Chatterbox) behind the same interface
-- Emphasis and pauses inside a block
-- A render queue for long scripts, chapter markers, M4B audiobooks
-- An MCP server next to the HTTP API
+Next: audio that starts playing while the rest is still rendering, pauses and emphasis inside a block, and
+loudness levelling on export. After that, a conversation mode you can talk to (`voxstudio[talk]`).
+[ROADMAP.md](ROADMAP.md) has the list with a success measure for each item, and
+[docs/decisions](docs/decisions/README.md) explains the choices behind the design.
 
 ## Licence
 

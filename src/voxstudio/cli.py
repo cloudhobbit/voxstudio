@@ -20,7 +20,8 @@ def free_port(start: int) -> int:
     raise SystemExit(f"No free port between {start} and {start + 19}")
 
 
-def serve(port: int, workspace: str | None, open_browser: bool, engine: str) -> None:
+def serve(port: int, workspace: str | None, open_browser: bool, engine: str, host: str = "127.0.0.1",
+          allow_hosts: list[str] | None = None) -> None:
     import uvicorn
 
     from .api import create_app
@@ -36,10 +37,13 @@ def serve(port: int, workspace: str | None, open_browser: bool, engine: str) -> 
     print(f"{NAME} {__version__}: {url}   (API docs: {url}api/docs)\nWorkspace: {ws.root}")
     if engine == "kokoro":
         print("Loading Kokoro in the background (the first start downloads the model, about 330 MB)...")
-    app = create_app(ws, engine_name=engine)
+    if host not in ("127.0.0.1", "localhost", "::1"):
+        print(f"Listening on {host}: other machines can reach this port. There is no login; requests are still refused\n"
+              f"unless their Host is localhost{''.join(', ' + h for h in allow_hosts or [])} (add names with --allow-host).")
+    app = create_app(ws, engine_name=engine, extra_hosts=set(allow_hosts or []))
     if open_browser:
         webbrowser.open(url)
-    uvicorn.run(app, host="127.0.0.1", port=chosen, log_level="warning")
+    uvicorn.run(app, host=host, port=chosen, log_level="warning")
 
 
 def speak(text: str, voice: str, out: str, speed: float, pitch: float, effect: str, space: str, engine: str,
@@ -75,6 +79,14 @@ def main(argv=None) -> None:
     s.add_argument("--workspace", help="folder for your voices and projects (default: ~/VoxStudio)")
     s.add_argument("--open", action="store_true", help="open the browser")
     s.add_argument("--engine", default="kokoro", choices=["kokoro", "fake"], help="fake: tones instead of a model")
+    s.add_argument("--host", default="127.0.0.1", help="address to listen on (default 127.0.0.1; 0.0.0.0 inside a container)")
+    s.add_argument("--allow-host", action="append", default=[], metavar="NAME",
+                   help="also answer requests addressed to this host name (repeatable), e.g. a LAN name")
+
+    m = sub.add_parser("mcp", help="run as a Model Context Protocol server over stdio, for coding agents")
+    m.add_argument("--url", help="a running Vox Studio to use (default http://127.0.0.1:7860, or $VOXSTUDIO_URL)")
+    m.add_argument("--workspace", help="start a private server on this workspace instead")
+    m.add_argument("--engine", default="kokoro", choices=["kokoro", "fake"])
 
     k = sub.add_parser("speak", help="write one line to a wav file")
     k.add_argument("text")
@@ -93,7 +105,10 @@ def main(argv=None) -> None:
     if a.cmd in (None, "serve"):
         if a.cmd is None:
             a = p.parse_args(["serve"] + (argv or sys.argv[1:]))
-        serve(a.port, a.workspace, a.open, a.engine)
+        serve(a.port, a.workspace, a.open, a.engine, a.host, a.allow_host)
+    elif a.cmd == "mcp":
+        from .mcp import run_stdio
+        run_stdio(a.url, a.workspace, a.engine)
     elif a.cmd == "speak":
         speak(a.text, a.voice, a.out, a.speed, a.pitch, a.effect, a.space, a.engine, a.workspace)
     elif a.cmd == "voices":

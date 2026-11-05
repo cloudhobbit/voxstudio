@@ -13,13 +13,14 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import NAME, __version__, pronounce, scan
+from . import NAME, __version__, importer, pronounce, scan
 from . import render as rendering
 from .cache import AudioCache, make_key
 from .catalogue import BLENDS, SAMPLE_LINES, VOICES, grade_note
 from .engines import load_engine
 from .fx import EFFECTS, SAMPLE_RATE, SPACES, Capabilities, apply_chain
 from .jobs import JobManager
+from .openai_compat import register as register_openai
 from .specs import SpecError, describe, parse_voice
 from .worker import TTSWorker
 from .workspace import Conflict, NotFound, Workspace, etag
@@ -84,8 +85,15 @@ class PreviewIn(BaseModel):
 
 class ProjectCreate(BaseModel):
     title: str = Field(min_length=1, max_length=120)
-    script: str | None = Field(None, max_length=200000)   # pasted text, split into blocks on blank lines
+    script: str | None = Field(None, max_length=200000)   # pasted text: plain, Markdown, SRT/VTT or "NAME: line" dialogue
     voice: str = "af_heart"
+    format: str = "auto"
+    voices: dict[str, str] = {}                            # for dialogue: speaker name -> voice
+
+
+class ImportIn(BaseModel):
+    text: str = Field(max_length=200000)
+    format: str = "auto"
 
 
 class ExportIn(BaseModel):
@@ -464,12 +472,20 @@ def create_app(workspace: Workspace, engine_name: str = "kokoro", worker: TTSWor
     @app.post("/api/projects", status_code=201)
     def create_project(body: ProjectCreate):
         parse_voice(body.voice, sigs())
-        blocks = [{"id": f"b{i + 1}", "text": t, "voice": body.voice} for i, t in enumerate(split_script(body.script or ""))]
+        parsed = importer.parse(body.script or "", body.format)
+        by_name = {k.strip().lower(): v for k, v in body.voices.items()}
+        blocks = [{"id": f"b{i + 1}", "text": b["text"], "voice": by_name.get(b.get("speaker", "").lower(), body.voice),
+                   **({"speaker": b["speaker"]} if b.get("speaker") else {})} for i, b in enumerate(parsed["blocks"])]
         slug = ws.projects.create(body.title.strip(), blocks)
         if blocks:
             data, tag = ws.projects.load(slug)
             ws.projects.save(slug, data, sigs(), tag)  # normalises the blocks
         return project_out(slug)
+
+    @app.post("/api/import/parse")
+    def import_parse(body: ImportIn):
+        """Split a script into blocks without saving anything: {format, blocks: [{text, speaker?}], speakers}."""
+        return importer.parse(body.text, body.format)
 
     @app.get("/api/projects/{slug}")
     def get_project(slug: str):
@@ -565,6 +581,7 @@ def create_app(workspace: Workspace, engine_name: str = "kokoro", worker: TTSWor
         return {"removed": cache.trim(older_than_days), **cache.stats()}
 
     app.state.jobs = jobs
+    register_openai(app, render, cache, caps, worker.engine.name)
     if (APP_DIR / "index.html").exists():
         app.mount("/", StaticFiles(directory=APP_DIR, html=True), name="app")
     return app

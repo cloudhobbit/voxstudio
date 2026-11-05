@@ -219,6 +219,8 @@ def normalise_block(block: dict, signatures: dict, index: int) -> dict:
         raise ValueError(f"Block {index + 1} has no text")
     out = {"id": str(block.get("id") or f"b{index + 1}"), "text": str(block["text"]).strip(),
            "voice": str(block.get("voice") or "af_heart")}
+    if str(block.get("speaker") or "").strip():   # who says it, kept from a dialogue import
+        out["speaker"] = str(block["speaker"]).strip()[:40]
     try:
         parse_voice(out["voice"], signatures)
     except SpecError as e:

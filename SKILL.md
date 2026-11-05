@@ -8,6 +8,10 @@ description: Render speech locally with Vox Studio, a free MIT voice studio on l
 Vox Studio is a local HTTP server (`voxstudio`, default `http://127.0.0.1:7860`) with a browser app on top.
 Everything the app does is an API call, so you can drive it directly. Full OpenAPI docs: `GET /api/docs`.
 
+If your client supports MCP, `voxstudio mcp` (stdio) offers the same things as tools (`speak`, `create_project`,
+`export_project`, …) and returns file paths. Tools that speak the OpenAI API can use
+`http://127.0.0.1:7860/v1/audio/speech`. The HTTP calls below always work.
+
 ## Check it is running
 
 ```bash
