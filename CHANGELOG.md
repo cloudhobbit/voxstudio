@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.0 (5 Nov 2026)
+
+- **Talk (experimental), as the optional extra `voxstudio[talk]`:** a voice conversation with any of your voices.
+  Microphone → end-of-turn detection → Whisper → any OpenAI-compatible language model → speech, clause by clause.
+  Talk over a reply and it stops. Hands-free, hold-to-talk and typed turns. One WebSocket, `/api/talk`.
+- Every turn reports where the time went. Measured on an M5 laptop with Whisper turbo, qwen3:14b through Ollama and
+  Kokoro: a median of 2.1 s from the end of a turn to the first sound. The language model's first sentence is
+  1.5 s of that; a faster model is the lever. See decision record 0007.
+- The page says whether your words stay on this machine or go to a model elsewhere.
+
 ## 0.3.0 (5 Nov 2026)
 
 - **Sound starts after the first sentence.** `POST /api/speak/stream` sends 16-bit PCM while the line is still

@@ -1,7 +1,7 @@
 # Roadmap
 
 Three tracks. Each item says what a user gets and how we will know it worked. Updated at every release;
-last update 5 Nov 2026 (0.3.0).
+last update 5 Nov 2026 (0.4.0).
 
 ## Studio: narration
 
@@ -23,9 +23,13 @@ last update 5 Nov 2026 (0.3.0).
 
 | When | Item | Success measure |
 |---|---|---|
-| Next | Latency spike: speech in, speech out, timed | Numbers for each stage on a laptop, published in the decision record |
-| Next | The loop: end-of-turn detection, speech-to-text, language model, streamed speech, interruption | Median voice-to-voice under 1.5 s locally; interrupting stops the reply within one audio chunk |
-| Later | Talk page and personas | A persona (voice + prompt + tools) holds a five-minute conversation and exports the transcript |
+| **Shipped 0.4** | Latency spike: speech in, speech out, timed | Met: numbers for each stage are in [decision record 0007](docs/decisions/0007-talk-latency-and-the-loop.md) |
+| **Shipped 0.4** (experimental) | The loop: end-of-turn detection, speech-to-text, language model, streamed speech, interruption | **Partly met.** Interrupting stops the reply within one audio chunk (tested). Median voice-to-voice is 2.1 s with a 14B local model at 13 tokens/s, against a target of 1.5 s |
+| Next (0.5) | Reach the latency target | Median under 1.5 s from end of turn to first sound on a laptop, with a small local model, measured by the same script |
+| Next (0.5) | Personas, saved (voice + prompt + greeting), and a conversation you can export | A persona holds a five-minute conversation and the transcript and audio export |
+| Next (0.5) | Know what was actually heard when interrupted | The history keeps only the words that were played before the interruption |
+| Later | Tools a persona can call, with a spoken filler while they run | A persona answers a question that needs a lookup |
+| Later | A better end-of-turn detector (Silero) as an option | Fewer false starts in a noisy room, measured on recorded samples |
 
 ## Check: a scorecard for voice agents (separate repository)
 

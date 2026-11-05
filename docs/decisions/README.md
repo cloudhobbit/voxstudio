@@ -12,6 +12,7 @@ boundary. Records are not edited after the fact; a later record supersedes an ea
 | [0004](0004-conversation-as-an-optional-extra.md) | Conversation mode ships as an optional extra in this repository | Accepted |
 | [0005](0005-scorecard-in-its-own-repository.md) | The voice-agent scorecard lives in its own repository | Accepted |
 | [0006](0006-one-streaming-synthesis-path.md) | One synthesis path, streamed; the engine is fed sentence by sentence | Accepted |
+| [0007](0007-talk-latency-and-the-loop.md) | Talk: what the latency spike found and how the loop is built | Accepted |
 
 Template: **Context** (what forced a choice), **Options** (with the cost of each), **Decision**, **Consequences**
 (what gets harder), **Owner** (who to ask, and who may reverse it).

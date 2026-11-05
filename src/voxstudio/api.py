@@ -21,6 +21,8 @@ from .jobs import JobManager
 from .openai_compat import register as register_openai
 from .specs import SpecError, describe, parse_voice
 from .synth import Synth
+from .talk.ws import TalkParts
+from .talk.ws import register as register_talk
 from .worker import TTSWorker
 from .workspace import Conflict, NotFound, Workspace, etag
 
@@ -122,7 +124,7 @@ def split_script(text: str) -> list[str]:
 
 
 def create_app(workspace: Workspace, engine_name: str = "kokoro", worker: TTSWorker | None = None,
-               extra_hosts: set[str] = frozenset(), caps: Capabilities | None = None) -> FastAPI:
+               extra_hosts: set[str] = frozenset(), caps: Capabilities | None = None, talk: TalkParts | None = None) -> FastAPI:
     ws = workspace
     cache = AudioCache(ws.cache_dir)
     worker = worker or TTSWorker(load_engine(engine_name))
@@ -236,7 +238,7 @@ def create_app(workspace: Workspace, engine_name: str = "kokoro", worker: TTSWor
     def health():
         return {"ok": True, "name": NAME, "version": __version__, "engine": worker.engine.name,
                 "languages": worker.languages, "warm_error": worker.warm_error, "queue": worker.queued,
-                "cache": cache.stats(), "workspace": str(ws.root),
+                "cache": cache.stats(), "workspace": str(ws.root), "talk": app.state.talk.describe(),
                 "capabilities": {"ffmpeg": caps.ffmpeg, "ffmpeg_version": caps.version, "rubberband": caps.rubberband,
                                  "mp3": caps.mp3}}
 
@@ -589,6 +591,7 @@ def create_app(workspace: Workspace, engine_name: str = "kokoro", worker: TTSWor
 
     app.state.jobs = jobs
     register_openai(app, synth, cache, caps, worker.engine.name)
+    register_talk(app, synth, allowed, talk or TalkParts(fake=worker.engine.name == "fake"))
     if (APP_DIR / "index.html").exists():
         app.mount("/", StaticFiles(directory=APP_DIR, html=True), name="app")
     return app

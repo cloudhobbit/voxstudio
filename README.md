@@ -140,6 +140,25 @@ Kokoro-82M (Apache-2.0) is the first engine: 82 million parameters, runs on a CP
 An engine is a small class with `voices()`, `speak()` and `speak_timed()`; see
 [`src/voxstudio/engines/base.py`](src/voxstudio/engines/base.py). Pull requests for other engines are welcome.
 
+## Talk to a voice (experimental)
+
+```bash
+uvx "voxstudio[talk]"
+```
+
+The Talk page holds a spoken conversation with any voice, blend or `@signature`: it listens, a language model
+answers, and the voice speaks the answer clause by clause. Talk over it and it stops. Hands-free, hold-to-talk,
+or typed.
+
+It hears with Whisper (on your machine) and thinks with any server that speaks the OpenAI chat API. By default
+that is an [Ollama](https://ollama.com) on this machine, using the smallest model you have; set
+`VOXSTUDIO_LLM_URL`, `VOXSTUDIO_LLM_MODEL` and `VOXSTUDIO_LLM_KEY` to use another. The page tells you whether
+your words stay on this machine.
+
+Each reply shows how long you waited and where the time went. On an M5 laptop with a 14B local model the median
+is about 2 seconds from the end of your turn to the first sound; a smaller model answers sooner.
+The protocol is one WebSocket, described in [`talk/ws.py`](src/voxstudio/talk/ws.py).
+
 ## Docker
 
 ```bash
@@ -169,7 +188,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Roadmap
 
-Next: a conversation mode you can talk to (`voxstudio[talk]`), built on the streaming that shipped in 0.3.
+Next: Talk under 1.5 seconds with a small local model, saved personas, and exported conversations.
 [ROADMAP.md](ROADMAP.md) has the list with a success measure for each item, and
 [docs/decisions](docs/decisions/README.md) explains the choices behind the design.
 

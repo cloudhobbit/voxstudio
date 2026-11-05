@@ -40,6 +40,7 @@ function renderNav() {
   clear(nav);
   nav.append(h("div.nav-group", {}, "Voice"));
   for (const [id, label, ic] of SECTIONS) nav.append(h("a", { href: `#/${id}`, "data-route": id }, { __html: icon(ic) }, h("span", {}, label)));
+  nav.append(h("div.nav-group", {}, "Conversation"), h("a", { href: "#/talk", "data-route": "talk" }, { __html: icon("volume") }, h("span", {}, "Talk")));
   const bottom = document.getElementById("nav-bottom");
   clear(bottom);
   bottom.append(h("a", { href: "#/settings", "data-route": "settings" }, { __html: icon("settings") }, h("span", {}, "Settings")));
@@ -108,8 +109,9 @@ import * as signatures from "./pages/signatures.js";
 import * as pronunciations from "./pages/pronunciations.js";
 import * as projects from "./pages/projects.js";
 import * as settings from "./pages/settings.js";
+import * as talk from "./pages/talk.js";
 import * as kitchen from "./pages/kitchen.js";
-for (const [name, page] of Object.entries({ library, workbench, mixer, signatures, pronunciations, projects, settings, "kitchen-sink": kitchen })) route(name, page);
+for (const [name, page] of Object.entries({ library, workbench, mixer, signatures, pronunciations, projects, talk, settings, "kitchen-sink": kitchen })) route(name, page);
 route("404", { mount: (el) => { clear(el); el.append(h("div.empty", {}, "No such page.", h("a", { href: "#/library" }, "Go to the Library"))); setTitle("Not found"); } });
 
 renderNav();
